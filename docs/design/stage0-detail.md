@@ -1273,8 +1273,8 @@ def init_project(root: Path, *, force: bool = False) -> ScaffoldResult: ...
 | 8 | `db.schema` | `PRAGMA user_version == SCHEMA_VERSION` かつ6テーブルがすべて存在する | — | 版数が古い場合: `media-agent init` で移行されます／新しい場合: Media Agent を更新してください |
 | 9 | `db.foreign_keys` | 検査用の接続で `PRAGMA foreign_keys` が `1` を返す | — | 実装の不具合（罠 T-2）。報告してください |
 | 10 | `logs.writable` | `logs/` に一時ファイルを作成して削除できる | — | ディレクトリの権限を確認してください |
-| 11 | `gitignore` | `.media-agent/.gitignore` が存在し、`data/` `logs/` `.env` の3つを**行として**含む | — | 要件14.2。`media-agent init --force` で復元できます |
-| 12 | `secrets.not_tracked` | `.media-agent/` 配下に `.env*` が**存在しない**、または存在して Git の追跡対象でない | `.env*` が無い場合は **`skipped`**（メッセージ: Stage 0 では認証情報を使いません）／Git リポジトリでない場合も `skipped` | `.env` が Git の追跡対象です。`git rm --cached` で外してください |
+| 11 | `security.gitignore` | `.media-agent/.gitignore` が存在し、`data/` `logs/` `.env` の3つを**行として**含む | — | 要件14.2。`media-agent init --force` で復元できます |
+| 12 | `security.env_not_tracked` | `.media-agent/` 配下に `.env*` が**存在しない**、または存在して Git の追跡対象でない | `.env*` が無い場合は **`skipped`**（メッセージ: Stage 0 では認証情報を使いません）／Git リポジトリでない場合も `skipped` | `.env` が Git の追跡対象です。`git rm --cached` で外してください |
 | 13 | `agents.registry` | `build_default_registry()` が1つ以上の Agent を返し、`echo` が引ける | — | 実装の不具合。報告してください |
 | 14 | `policy.config` | 4 Action すべてについて `PolicyEngine.check(..., record=False)` が `PolicyDecision` を返す | — | `actions` の設定を確認してください |
 | 15 | `runtime.python` | 実行中の Python が 3.11 以上 | — | Python 3.11 以上で実行してください |
@@ -1293,7 +1293,7 @@ Media Agent doctor — /abs/path/to/project
 [ok]      structure.files      config.yaml / strategy.md / rules.md がそろっています
 [ok]      structure.dirs       agents / memory / data / logs がそろっています
 ...
-[skipped] secrets.not_tracked  .env はありません（Stage 0 では認証情報を使いません）
+[skipped] security.env_not_tracked  .env はありません（Stage 0 では認証情報を使いません）
 [warn]    config.consistency   content.posts_per_day (5) が actions.post.max_per_day (3) を超えています
 結果: 13 ok / 1 warn / 1 skipped / 0 fail
 ```
@@ -1573,8 +1573,8 @@ Hint: <対処（省略可）>
 | --- | --- | --- | --- |
 | 1 | 利用者プロジェクト側の除外 | `.media-agent/.gitignore` に `data/` `logs/` `.env` `.env.*`（12.2） | T-004 |
 | 2 | Media Agent リポジトリ側の除外 | リポジトリルートの `.gitignore`（18.3） | T-004 |
-| 3 | 設定検証 | `doctor` の `gitignore` 検査（除外設定が消えていないか） | T-007 |
-| 4 | 追跡の検査 | `doctor` の `secrets.not_tracked` 検査（`.env` が Git に追跡されていないか） | T-007 |
+| 3 | 設定検証 | `doctor` の `security.gitignore` 検査（除外設定が消えていないか） | T-007 |
+| 4 | 追跡の検査 | `doctor` の `security.env_not_tracked` 検査（`.env` が Git に追跡されていないか） | T-007 |
 | 5 | 記録への漏洩防止 | Audit / 運用ログの秘密値マスク（11.4） | T-005 |
 | 6 | 設定ファイルへの記載防止 | `config.yaml` のスキーマに認証情報の項目を**置かない**（`extra="forbid"` により、書いても検証エラーになる） | T-004 |
 
@@ -1609,7 +1609,7 @@ coverage.xml
 | ID | 期待値の所在 | 二値で判定できる形（要点） |
 | --- | --- | --- |
 | **S-A** | 12.1 / 12.5 / 12.6 | 空ディレクトリで `init` → 終了コード 0。**12.1 の8つの生成物が存在する**（`config.yaml` / `strategy.md` / `rules.md` / `agents/.gitkeep` / `memory/.gitkeep` / `data/` / `logs/` / `.gitignore`）。`config.yaml` は `load_config()` を通り、`project.name` がディレクトリ名。**`data/media-agent.db` は判定対象にしない**（12.4）。2回目の `init` も終了コード 0 で、既存ファイルの内容が変わらない（`--force` 無し） |
-| **S-B** | 13.2 / 13.3 | `init` 済みで `doctor` → 終了コード 0。stdout に**15項目の check id がすべて現れる**。`fail` の行が0件（`結果:` 行の `fail` が `0`）。`secrets.not_tracked` の行が `[skipped]` または `[ok]` であり、**`[fail]` でないこと**が「認証情報の不在を異常としない」の判定 |
+| **S-B** | 13.2 / 13.3 | `init` 済みで `doctor` → 終了コード 0。stdout に**15項目の check id がすべて現れる**。`fail` の行が0件（`結果:` 行の `fail` が `0`）。`security.env_not_tracked` の行が `[skipped]` または `[ok]` であり、**`[fail]` でないこと**が「認証情報の不在を異常としない」の判定 |
 | **S-C** | 14章 | `init` 済みで `status` → 終了コード 0。ラベル `project` / `config` / `database` / `agents` / `tasks` / `recent tasks` がすべて出る。`--json` で `agents` に `echo` が含まれ、`tasks.by_status` に**5状態すべてのキー**がある |
 | **S-D** | 17.2 | 未初期化ディレクトリで `doctor` / `status` / `run` / `agent list` / `task list` → **終了コード 3**、stderr に `Media Agent が初期化されていません`。スタブ4種は**終了コード 10**。いずれも stdout に成功を示す出力を出さない |
 | **S-E** | 8.1〜8.4 | `build_default_registry()` に `echo` があり、`AgentRunner.run("echo", {"message": "hi"})` の `TaskRunResult.output.payload == {"message": "hi"}`、`decision` と `reason` が空でない。CLI 経由なら `run --agent echo --input '{"message":"hi"}' --json` の `status == "completed"` かつ `output == {"message":"hi"}` |
