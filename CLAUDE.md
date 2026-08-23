@@ -116,30 +116,55 @@ push をレビュー前に行うのは、セッションが途中で切れうる
 上の節は AI開発組織の運営規約（層2、全プロジェクト共通）。
 ここから下が**このプロジェクト固有**の規約である。
 
-> **枠のみ。中身は PO と相談のうえ確定する（2026-08-23 時点で全項目 未確定）。**
 > 確定していない項目を推測で埋めないこと。**未確定のまま残すのが正しい。**
 > 確定した項目から順に、この節の見出しを埋めていく。
 
 ## このリポジトリは何か
 
-未確定。
+**Media Agent** — プロジェクトごとに導入できる、AI によるメディア運用 Agent 基盤。
+情報収集 → 価値判断 → コンテンツ生成 → 投稿 → 結果分析 → 戦略反映 を Agent で自動化する。
+初期対象は X だが、Core は SNS 固有仕様から独立させる。
+
+要件定義書: `docs/requirements-media-agent-v0.2.md`（v0.2 / PO 提示）。**この文書は PO の持ち物である。**
 
 ## ゴール
 
-未確定。
+**現在のゴールは要件定義書 Stage 0（Media Agent Core）のみ。** 達成条件 A-1〜A-8 と PO 制約 C-1〜C-4 は
+`docs/handover.md` にある。**着手前に必ず読むこと。**
+
+Stage 1 以降（Content / Research / Strategy / Analytics / Engagement / Orchestrator、
+X Connector、Google News / RSS / Web）は範囲外。
+
+**X への実際の投稿を行わない。認証情報は環境に無い。** Stage 0 は外部接続を一切持たない。
+実投稿を試す必要が出たら、作業を止めてオーケストレーターへ報告すること。
 
 ## 技術スタック
 
-未確定。
+`docs/design/stage0-architecture.md` 3章で確定（却下案つき）。
+
+| | |
+| --- | --- |
+| Python | >= 3.11（CI matrix 3.11 / 3.12 / 3.13） |
+| CLI | Click >=8.1,<9 |
+| 設定 | PyYAML `safe_load` + Pydantic v2 |
+| DB | 標準ライブラリ `sqlite3` + 手書き SQL の Repository 層 |
+| テスト | pytest |
+| lint / format | Ruff |
+| 型 | mypy（`src` のみ・非 strict） |
+| ビルド | hatchling + src レイアウト |
 
 ## ビルド・テスト・リント
 
-未確定。確定したら、**実際に動くコマンドだけ**を書く。動かないコマンドを置くと、
-エージェントがそれを信じて失敗する。
+**未確定。T-004 でパッケージが作られ、実際に実行できるようになった時点で埋める。**
+
+予定のコマンドは `docs/design/stage0-architecture.md` 15.1 にある。
+**まだ実行できない**（`pyproject.toml` が存在しないため）。設計文書のコマンドを、
+ここに書かれた確定コマンドとして扱わないこと。
 
 ## コーディング規約
 
-未確定。
+品質基準 Q1〜Q10 は `.claude/rules/quality-standards.md`。**レビューはこれを参照する。**
+命名・ファイル分割・関数の構造は実装エージェントの裁量（`.claude/rules/org-escalation.md`「上げないもの」）。
 
 ## 用語
 

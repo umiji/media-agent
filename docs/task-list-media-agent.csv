@@ -1,6 +1,6 @@
 ID,作成日,更新日,タスク名,状態,優先度,担当,依存タスク,ドキュメント
-T-001,2026-08-23,2026-08-23,Stage 0 方式設計（構造と技術選定）,設計中,高,org-design,無し,docs/tasks/T-001.md
-T-002,2026-08-23,2026-08-23,Stage 0 詳細設計（SchemaとInterface）,未着手,高,org-design,T-001（ブロッカー）,docs/tasks/T-002.md
+T-001,2026-08-23,2026-08-23,Stage 0 方式設計（構造と技術選定）,完了,高,org-design,無し,docs/tasks/T-001.md
+T-002,2026-08-23,2026-08-23,Stage 0 詳細設計（SchemaとInterface）,設計中,高,org-design,T-001（ブロッカー）,docs/tasks/T-002.md
 T-003,2026-08-23,2026-08-23,Stage 0 受け入れテスト作成,未着手,高,org-test,T-002（ブロッカー）,docs/tasks/T-003.md
 T-004,2026-08-23,2026-08-23,Package骨格・CLI・Config・init実装,未着手,高,org-implementation,T-003（ブロッカー）,docs/tasks/T-004.md
 T-005,2026-08-23,2026-08-23,DB層とLogging/Audit実装,未着手,高,org-implementation,T-004（ブロッカー）,docs/tasks/T-005.md
