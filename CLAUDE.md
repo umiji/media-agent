@@ -138,45 +138,12 @@ X Connector、Google News / RSS / Web）は範囲外。
 **X への実際の投稿を行わない。認証情報は環境に無い。** Stage 0 は外部接続を一切持たない。
 実投稿を試す必要が出たら、作業を止めてオーケストレーターへ報告すること。
 
-## 技術スタック
+## 技術スタック・ビルド・テスト・リント
 
-`docs/design/stage0-architecture.md` 3章で確定（却下案つき）。
+**`.claude/rules/media-agent-build.md` にある。** Python の版数、依存、
+開発環境の準備、単体テスト・受け入れテスト・lint・整形・型検査の各コマンドと、その注意点。
 
-| | |
-| --- | --- |
-| Python | >= 3.11（CI matrix 3.11 / 3.12 / 3.13） |
-| CLI | Click >=8.1,<9 |
-| 設定 | PyYAML `safe_load` + Pydantic v2 |
-| DB | 標準ライブラリ `sqlite3` + 手書き SQL の Repository 層 |
-| テスト | pytest |
-| lint / format | Ruff |
-| 型 | mypy（`src` のみ・非 strict） |
-| ビルド | hatchling + src レイアウト |
-
-## ビルド・テスト・リント
-
-**下記は T-004（2026-08-24）で実際に実行して通ったコマンドである。**
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"   # 開発環境の準備
-
-.venv/bin/pytest tests/unit                   # 単体テスト
-.venv/bin/pytest tests/acceptance             # 受け入れテスト
-.venv/bin/ruff check .                        # lint
-.venv/bin/ruff format --check .               # 整形の検査
-.venv/bin/mypy src                            # 型検査
-```
-
-**`pytest`（引数なし）は T-006 が完了するまで通らない。** T-006 のモジュールを import する
-受け入れテストが収集時に `ModuleNotFoundError` になり、pytest が収集エラーで中断するため。
-**`--continue-on-collection-errors` を既定に足さないこと。** 本物の収集エラーを隠す。
-
-`ruff` は `docs/` を対象外にしてある。**`ruff format` が Markdown 中の Python コードブロックを
-書き換えてしまうため**（T-004 が実地で確認）。この除外を外さないこと。
-
-コンソールスクリプトの疎通テストは、**仮想環境を有効化した状態**（`.venv/bin` が PATH にある状態）で
-実行すること。`.venv/bin/pytest` と前置しただけでは `shutil.which("media-agent")` が解決できない。
+**`CLAUDE.md` が200行を超えたため分割した**（2026-08-24）。内容は変えていない。
 
 ## CI の観測はオーケストレーターが行う
 

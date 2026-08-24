@@ -575,3 +575,25 @@ Policy の判定結果 `PolicyDecision.detail` に入る値。上限超過がど
 前段の検査が fail したための打ち切り）を、合格と区別するために分けてある。
 
 出所: T-007 決定ログ
+
+---
+
+以下は `docs/tasks/T-010.md`（ドキュメント / コミット `38ea9fc`）で配置が確定した。
+
+## マスタ / ビューの、このリポジトリでの配置
+
+用語集の「エージェント用マスタ / 人間用ビュー」を、media-agent では次の配置で実現している。
+
+| | 実体 |
+| --- | --- |
+| マスタ（正典） | `docs/features/<機能>.md` / `docs/guides/<目的>.md` |
+| 人間用ビュー（**生成物**） | `README.md` / `docs/handbook.md` |
+| 生成 | `python3 docs/tools/build_docs.py`（検査は `--check`） |
+
+**`README.md` と `docs/handbook.md` を直接編集しないこと。** 次の生成で失われる。
+直すのはマスタ側であり、`--check` が食い違いを検出する。
+
+**`docs/design/` はマスタではない。** 設計成果物は org-design の持ち物であり、
+利用者向け文書とは読者も寿命も違う。混ぜない。
+
+出所: T-010 決定ログ
