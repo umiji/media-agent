@@ -13,8 +13,8 @@ import json
 from pathlib import Path
 
 import pytest
-from media_agent.core.policy import PolicyRequest
 
+from media_agent.core.policy import PolicyRequest
 from tests.acceptance.expectations import (
     AUDIT_KEYS,
     EXIT_OK,

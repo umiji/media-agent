@@ -13,10 +13,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from media_agent.agents.builtin import EchoAgent, build_default_registry
 from media_agent.core.runtime import AgentInput, AgentRegistry
 from media_agent.errors import AgentNotFoundError
-
 from tests.acceptance.expectations import (
     BUILTIN_AGENTS,
     EXIT_OK,

@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from media_agent.core.policy import PolicyOutcome, PolicyReasonCode, PolicyRequest
 
+from media_agent.core.policy import PolicyOutcome, PolicyReasonCode, PolicyRequest
 from tests.acceptance.expectations import base_config, build_policy_engine, write_config
 
 pytestmark = pytest.mark.acceptance

@@ -12,9 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from media_agent.core.task import TaskStatus
 from media_agent.errors import InvalidTaskTransitionError
-
 from tests.acceptance.expectations import (
     EXIT_OK,
     EXIT_RUNTIME_ERROR,
