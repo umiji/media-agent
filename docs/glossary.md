@@ -486,7 +486,11 @@ DB の構造版数（`PRAGMA user_version`）と、設定ファイルの構造�
 
 **「Stage 0 で実装すると決まっているが、その実装タスクがまだ来ていない」状態**を表す枠。
 `src/media_agent/cli/commands/_pending.py` の `not_implemented_yet()` が `NotImplementedError` を投げ、
-CLI 層が終了コード **70** へ変換する。
+CLI 層が終了コード **70** へ変換した。
+
+**このファイルは T-007（コミット `2f12cbd`）で削除された。** 5コマンドが実装され、枠が全て
+置き換えられたためである。**下表の「Stage 0 の最終形」が実際に起きた**ということであり、
+語の定義が変わったのではない。Stage 1 以降で同じ状態が再び要るなら、同じ枠を作り直してよい。
 
 **スタブコマンド（終了コード 10）と混同しないこと。** 別の概念である。
 
@@ -543,3 +547,31 @@ Policy の判定結果 `PolicyDecision.detail` に入る値。上限超過がど
 名前が無いまま `detail` を読むと、どちらの上限に当たったのか呼び出し側が判別できない。
 
 出所: T-006 決定ログ
+
+---
+
+以下は `docs/tasks/T-007.md`（実装 / コミット `2f12cbd`）で名前が付いた。
+
+## ProjectSession
+
+1回の CLI コマンド実行が使う「ルート解決 → Config 読み込み → 運用ログ準備 → DB 接続」を
+済ませた一式（`src/media_agent/cli/session.py`）。
+
+**`CliContext` との違いは、どこまで進んだかである。** `CliContext` はグローバルオプションと
+プロジェクト解決の入口までを持つ。`ProjectSession` はその先の Config・ログ・DB まで揃った状態を指す。
+
+準備の順序がそのまま**終了コード 3 / 4 の優先順位**であり、それを1箇所へ閉じ込めるために型がある。
+**各コマンドが自前で順序を組むと、同じ異常に別の終了コードが付く。**
+
+出所: T-007 決定ログ
+
+## DiagnosticsReport / CheckResult / CheckStatus
+
+`doctor` の検査結果の型（`src/media_agent/cli/diagnostics.py`）。`CheckStatus` は
+`ok` / `warn` / `fail` / `skipped` を取る。**`check id` は既存語**（詳細設計13章）であり、
+これらはその結果を運ぶ器である。
+
+**`skipped` を `ok` と同じに扱わないこと。** 検査が実行できなかったこと（認証情報の不在、
+前段の検査が fail したための打ち切り）を、合格と区別するために分けてある。
+
+出所: T-007 決定ログ
