@@ -6,6 +6,7 @@ T-004,2026-08-23,2026-08-24,Package骨格・CLI・Config・init実装,完了,高
 T-005,2026-08-23,2026-08-24,DB層とLogging/Audit実装,完了,高,org-implementation,T-004（ブロッカー）,docs/tasks/T-005.md
 T-006,2026-08-23,2026-08-24,Agent Runtime・Task・Policy実装,完了,高,org-implementation,T-005（ブロッカー）,docs/tasks/T-006.md
 T-007,2026-08-23,2026-08-24,doctor/status/run統合とCI整備,完了,高,org-implementation,T-006（ブロッカー）,docs/tasks/T-007.md
-T-008,2026-08-23,2026-08-24,Stage 0 受け入れ・回帰テスト実行,テスト中,高,org-test,T-007（ブロッカー）,docs/tasks/T-008.md
-T-009,2026-08-23,2026-08-23,Stage 0 レビュー,未着手,高,org-review,T-008（ブロッカー）,docs/tasks/T-009.md
-T-010,2026-08-23,2026-08-23,READMEとPO確認用実行手順書,未着手,中,org-documentation,T-007（ブロッカー）,docs/tasks/T-010.md
+T-008,2026-08-23,2026-08-24,Stage 0 受け入れ・回帰テスト実行,完了,高,org-test,T-007（ブロッカー）,docs/tasks/T-008.md
+T-009,2026-08-23,2026-08-24,Stage 0 レビュー,レビュー中,高,org-review,T-008（ブロッカー）,docs/tasks/T-009.md
+T-010,2026-08-23,2026-08-24,READMEとPO確認用実行手順書,実装中,中,org-documentation,T-007（ブロッカー）,docs/tasks/T-010.md
+T-011,2026-08-24,2026-08-24,受け入れテストのDB接続リーク修正,未着手,中,org-test,T-009（推奨: レビュー指摘と併せて直すため）,docs/tasks/T-011.md
