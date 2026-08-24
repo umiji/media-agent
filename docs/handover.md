@@ -37,7 +37,7 @@ PO は当初これを「MVP01」と呼んだが、要件定義書 v0.2 に「MVP
 | **A-4** | 単体テスト・受け入れテストが全通過している | テスト実行コマンドの実出力 |
 | **A-5** | org-review を通過している（Blocker / Major が残っていない） | T-009 の報告 |
 | **A-6** | PO 確認用の実行手順書が成果物にある | T-010 の成果物 |
-| **A-7** | 上記が指定ブランチ `claude/mvp01-implementation-testing-0ldwtq` へ push されている | `git log` |
+| **A-7** | 上記が指定ブランチへ push されている。**2026-08-24 セッション2 から指定ブランチは `claude/session-resume-mdqrmg`**（前ブランチは PR #1 で `main` へマージ済み） | `git log` |
 | **A-8** | Stage 1 以降の要件（Content / Research / X Connector / Analytics 等）へ手を出していない | org-review が確認 |
 
 **A-6 は完了の前提だが、PO による実行確認そのものは待たない**（2026-08-23 PO 回答「手順書だけ用意し進む」）。
@@ -211,6 +211,16 @@ T-005 が設計成果物を1文字も変えずに、書かれていない箇所�
 Stage 3 で Action を実装する際に実行回数へ差し替えないと、二重計上になる。
 
 ---
+
+### 2026-08-24 セッション2（前セッションはトークン上限で中断）
+
+- 再開手順（`org-session-resume`）を実行した。`org-check.py` は**停滞なし・警告なし**。`docs/po-queue.md` は**未回答なし**
+- **T-006 はコードが1行も書かれていなかった。** 割り当て直後にセッションが切れたためで、
+  `src/media_agent/` に `core/task` / `core/runtime` / `core/policy` / `agents` は存在しない。作業ツリーはクリーン
+- **push 先ブランチが変わった。** 前ブランチ `claude/mvp01-implementation-testing-0ldwtq` は PR #1 で `main` へマージ済み。
+  セッション2 の指定ブランチは `claude/session-resume-mdqrmg`（`main` の直後から分岐）。
+  A-7 と、T-006 / T-007 の共通完了条件のブランチ名を書き換えた。**T-004 / T-005 は完了済みのため当時の記録のまま残す**
+- T-006 を org-implementation へ再割り当てした
 
 ## 次のセッションが最初にやること
 
