@@ -1178,7 +1178,9 @@ cd ~
 rm -rf ~/media-agent-check
 ```
 
-Media Agent は `~/media-agent-check` の外へ何も書き込まない（仮想環境もリポジトリの中にある）。
+Media Agent 自身は `~/media-agent-check` の外へ何も書き込まない（仮想環境もリポジトリの中にある）。
+**残るのは `pip` のダウンロードキャッシュ（`~/.cache/pip`）だけである。** 気になる場合は
+`.venv/bin/python -m pip cache purge` で消せる。
 
 ---
 
