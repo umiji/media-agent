@@ -1,0 +1,20 @@
+# Media Agent 本体リポジトリの除外設定
+# 出所: 詳細設計 `docs/design/stage0-detail.md` 18.3（T-004 完了条件8）/ 要件定義書14.2節
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# 認証情報。Stage 0 では使わないが、置かれても追跡しない
+.env
+.env.*

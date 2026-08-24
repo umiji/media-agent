@@ -1,0 +1,75 @@
+# Media Agent のパッケージ定義と、開発ツールの設定（唯一の設定ファイル）。
+# 出所: 方式設計 `docs/design/stage0-architecture.md` 3章（技術選定）・4章（Repository 構造）・
+#       10章（Test 構造）・12章（Version 管理）。
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "media-agent"
+dynamic = ["version"]
+description = "任意のプロジェクトへ導入して使う、メディア運用の汎用エージェント基盤"
+# readme: README.md は org-documentation（T-010）の成果物。存在しない時点では宣言しない
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "click>=8.1,<9",
+    "PyYAML>=6.0",
+    "pydantic>=2.7,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+    "types-PyYAML",
+]
+
+[project.scripts]
+media-agent = "media_agent.cli.app:main"
+
+[tool.hatch.version]
+path = "src/media_agent/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/media_agent"]
+
+# --- pytest（方式設計 3.5・10.1・10.5）---------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "acceptance: 受け入れテスト（org-test が書く。方式設計 10.1）",
+]
+
+# --- Ruff（方式設計 3.6）------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["src", "tests"]
+# `.claude/` は AI 開発組織の運営ファイル、`docs/` は設計成果物であり、
+# どちらも製品コードではない（方式設計4章）。ruff の対象にしない。
+extend-exclude = [".claude", "docs"]
+
+[tool.ruff.lint]
+# E501（行長）は選ばない。行の折り返しは `ruff format` の担当であり、
+# 整形器が畳めない文字列・docstring（日本語の説明が多い）まで違反になるため。
+select = ["E4", "E7", "E9", "F", "W", "I", "UP", "B", "C4"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["media_agent"]
+
+# --- mypy（方式設計 3.6。適用範囲は src/media_agent のみ）--------------------------------
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+disallow_untyped_defs = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
