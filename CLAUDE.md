@@ -116,30 +116,72 @@ push をレビュー前に行うのは、セッションが途中で切れうる
 上の節は AI開発組織の運営規約（層2、全プロジェクト共通）。
 ここから下が**このプロジェクト固有**の規約である。
 
-> **枠のみ。中身は PO と相談のうえ確定する（2026-08-23 時点で全項目 未確定）。**
 > 確定していない項目を推測で埋めないこと。**未確定のまま残すのが正しい。**
 > 確定した項目から順に、この節の見出しを埋めていく。
 
 ## このリポジトリは何か
 
-未確定。
+**Media Agent** — プロジェクトごとに導入できる、AI によるメディア運用 Agent 基盤。
+情報収集 → 価値判断 → コンテンツ生成 → 投稿 → 結果分析 → 戦略反映 を Agent で自動化する。
+初期対象は X だが、Core は SNS 固有仕様から独立させる。
+
+要件定義書: `docs/requirements-media-agent-v0.2.md`（v0.2 / PO 提示）。**この文書は PO の持ち物である。**
 
 ## ゴール
 
-未確定。
+**現在のゴールは要件定義書 Stage 0（Media Agent Core）のみ。** 達成条件 A-1〜A-8 と PO 制約 C-1〜C-4 は
+`docs/handover.md` にある。**着手前に必ず読むこと。**
+
+Stage 1 以降（Content / Research / Strategy / Analytics / Engagement / Orchestrator、
+X Connector、Google News / RSS / Web）は範囲外。
+
+**X への実際の投稿を行わない。認証情報は環境に無い。** Stage 0 は外部接続を一切持たない。
+実投稿を試す必要が出たら、作業を止めてオーケストレーターへ報告すること。
 
 ## 技術スタック
 
-未確定。
+`docs/design/stage0-architecture.md` 3章で確定（却下案つき）。
+
+| | |
+| --- | --- |
+| Python | >= 3.11（CI matrix 3.11 / 3.12 / 3.13） |
+| CLI | Click >=8.1,<9 |
+| 設定 | PyYAML `safe_load` + Pydantic v2 |
+| DB | 標準ライブラリ `sqlite3` + 手書き SQL の Repository 層 |
+| テスト | pytest |
+| lint / format | Ruff |
+| 型 | mypy（`src` のみ・非 strict） |
+| ビルド | hatchling + src レイアウト |
 
 ## ビルド・テスト・リント
 
-未確定。確定したら、**実際に動くコマンドだけ**を書く。動かないコマンドを置くと、
-エージェントがそれを信じて失敗する。
+**下記は T-004（2026-08-24）で実際に実行して通ったコマンドである。**
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"   # 開発環境の準備
+
+.venv/bin/pytest tests/unit                   # 単体テスト
+.venv/bin/pytest tests/acceptance             # 受け入れテスト
+.venv/bin/ruff check .                        # lint
+.venv/bin/ruff format --check .               # 整形の検査
+.venv/bin/mypy src                            # 型検査
+```
+
+**`pytest`（引数なし）は T-006 が完了するまで通らない。** T-006 のモジュールを import する
+受け入れテストが収集時に `ModuleNotFoundError` になり、pytest が収集エラーで中断するため。
+**`--continue-on-collection-errors` を既定に足さないこと。** 本物の収集エラーを隠す。
+
+`ruff` は `docs/` を対象外にしてある。**`ruff format` が Markdown 中の Python コードブロックを
+書き換えてしまうため**（T-004 が実地で確認）。この除外を外さないこと。
+
+コンソールスクリプトの疎通テストは、**仮想環境を有効化した状態**（`.venv/bin` が PATH にある状態）で
+実行すること。`.venv/bin/pytest` と前置しただけでは `shutil.which("media-agent")` が解決できない。
 
 ## コーディング規約
 
-未確定。
+品質基準 Q1〜Q10 は `.claude/rules/quality-standards.md`。**レビューはこれを参照する。**
+命名・ファイル分割・関数の構造は実装エージェントの裁量（`.claude/rules/org-escalation.md`「上げないもの」）。
 
 ## 用語
 
