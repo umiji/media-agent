@@ -1,0 +1,37 @@
+# Media Agent プロジェクト設定
+# 項目の意味: docs/design/stage0-detail.md 5章
+# このファイルは Git で追跡してよい（認証情報を書かないこと）
+
+version: 1
+
+project:
+  name: "{{PROJECT_NAME}}"
+  description: ""
+
+media:
+  primary_platform: x        # Stage 0 では x のみ
+
+content:
+  posts_per_day: 3           # 目標値。上限は actions.post.max_per_day
+
+automation:
+  require_approval: false    # true にすると、すべての Action が承認必須になる
+
+actions:
+  post:
+    mode: auto               # auto / approval / disabled
+    max_per_day: 3
+  reply:
+    mode: approval
+  repost:
+    mode: approval
+  like:
+    mode: disabled
+
+limits:
+  max_actions_per_hour: 10
+  forbidden_topics: []
+  forbidden_users: []
+
+logging:
+  level: info                # debug / info / warning / error
