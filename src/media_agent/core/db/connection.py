@@ -1,6 +1,6 @@
 """SQLite への接続とプロジェクト DB の初期化（詳細設計 6.3 / 12.4）。
 
-**`core/` は `.media-agent` というパスを組み立てない**（品質基準 Q7）。DB の場所は
+**`core/` はプロジェクト配下のパスを組み立てない**（品質基準 Q7）。DB の場所は
 `ProjectPaths`（`project/layout.py` の `ProjectLayout` が構造的に満たす）か `Path` で受け取る。
 """
 
