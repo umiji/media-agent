@@ -1,0 +1,60 @@
+# Stage 0 の CI（方式設計 `docs/design/stage0-architecture.md` 11.1・11.2）。
+#
+# **ここで回すのはテストとリントだけである。** 定期実行（Scheduler / 自動投稿）は
+# Stage 3 以降の話であり、Stage 0 では置かない（方式設計 11.1）。
+#
+# **Secrets を1つも参照しない。外部サービスへ接続しない**（PO 制約 C-1・C-2、品質基準 Q6）。
+# この workflow が認証情報を要求する構成になったら、それは Stage 0 の範囲を超えた合図である。
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# 同じブランチで新しい push があれば、古い実行は打ち切る（無駄な実行を残さない）。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 読み取りだけで足りる（この workflow はリポジトリへ書き戻さない）。
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      # 1つのバージョンが落ちても、他のバージョンの結果を最後まで見る。
+      fail-fast: false
+      matrix:
+        # 方式設計 3.1 の「>= 3.11」という宣言を、実際に検証するための matrix。
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install (editable + dev)
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Lint (ruff check)
+        run: ruff check .
+
+      - name: Format check (ruff format)
+        run: ruff format --check .
+
+      - name: Type check (mypy)
+        run: mypy src
+
+      # 正典のコマンド（方式設計 10.5）。単体テストと受け入れテストの両方を回す。
+      # `--continue-on-collection-errors` を足さないこと（本物の収集エラーを隠す）。
+      - name: Test (pytest)
+        run: pytest

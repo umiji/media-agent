@@ -41,10 +41,22 @@ packages = ["src/media_agent"]
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = "--strict-markers"
+# カバレッジは**計測する。閾値は設けない**（方式設計 3.5）。閾値を満たすためのテストが
+# 書かれると、受け入れテストの意味が薄れる。代わりに品質基準 Q5（新規モジュールに
+# 対応する単体テストがある）をレビューで見る。
+addopts = "--strict-markers --cov=media_agent --cov-report=term-missing:skip-covered"
 markers = [
     "acceptance: 受け入れテスト（org-test が書く。方式設計 10.1）",
 ]
+
+# --- カバレッジ（方式設計 3.5）------------------------------------------------------------
+[tool.coverage.run]
+source = ["src/media_agent"]
+branch = true
+
+[tool.coverage.report]
+# `--cov-fail-under` は置かない（方式設計 3.5 の却下案）。
+exclude_also = ["if TYPE_CHECKING:"]
 
 # --- Ruff（方式設計 3.6）------------------------------------------------------------------
 [tool.ruff]
