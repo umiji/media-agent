@@ -1,15 +1,20 @@
-"""`media-agent agent list` の枠（中身は T-007。詳細設計 16.1）。
+"""`media-agent agent list`（詳細設計 16.1）。
 
-**`agent list` は Config を読まない**（詳細設計 17.2 の注記）。Registry は組み込みのみで、
-設定に依存しないため。未初期化のときだけ終了コード 3 で終わる。
+**読み取り専用**であり、**Config を読まない**（詳細設計 17.2 の注記）。Registry は
+組み込みのみで設定に依存しないため、`config.yaml` が壊れていても一覧は出せる。
+未初期化のときだけ終了コード 3 で終わる。
 """
 
 from __future__ import annotations
 
 import click
 
-from media_agent.cli.commands._pending import not_implemented_yet
+from media_agent.agents.builtin import build_default_registry
 from media_agent.cli.context import CliContext, pass_cli_context
+from media_agent.cli.rendering import agent_as_json, emit_json, render_table
+
+#: 表のヘッダ（安定文字列。詳細設計 16.1）。
+HEADERS = ("NAME", "VERSION", "DESCRIPTION")
 
 
 @click.group("agent")
@@ -23,4 +28,12 @@ def agent_group() -> None:
 def agent_list_command(cli_ctx: CliContext, json_output: bool) -> None:
     """Registry に登録された Agent の一覧を表示する。"""
     cli_ctx.project_root()
-    not_implemented_yet("agent list", "T-007")
+    agents = [agent_as_json(agent) for agent in build_default_registry().all()]
+    if cli_ctx.wants_json(json_output):
+        emit_json({"agents": agents})
+        return
+    rows = [
+        (agent["name"], str(agent["version"]), agent["description"]) for agent in agents
+    ]
+    for line in render_table(HEADERS, rows):
+        click.echo(line)
