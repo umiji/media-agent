@@ -10,7 +10,8 @@ build-backend = "hatchling.build"
 name = "media-agent"
 dynamic = ["version"]
 description = "任意のプロジェクトへ導入して使う、メディア運用の汎用エージェント基盤"
-# readme: README.md は org-documentation（T-010）の成果物。存在しない時点では宣言しない
+# README.md は docs/ 配下のマスタから生成される（docs/tools/build_docs.py）
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary" }
 dependencies = [
