@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Literal
 
 from media_agent.core.config.loader import load_config
+from media_agent.core.config.models import Config
+from media_agent.core.db.connection import ensure_project_db
 from media_agent.errors import ConfigError, ScaffoldError
 from media_agent.project.layout import ProjectLayout, layout_for
 
@@ -123,7 +125,33 @@ def init_project(root: Path, *, force: bool = False) -> ScaffoldResult:
 
     result = ScaffoldResult(layout=layout, entries=tuple(entries))
     _verify_generated_config(result)
-    return result
+
+    entries.append(_ensure_database(layout))
+    return ScaffoldResult(layout=layout, entries=tuple(entries))
+
+
+def _ensure_database(layout: ProjectLayout) -> ScaffoldEntry:
+    """DB ファイルを用意する（詳細設計 12.4。順序制約 O-1 の接続点）。
+
+    - **既存の DB は壊さない。** スキーマ版数が一致していれば SQL を1つも実行しない（7.3）
+    - 設定が読めない場合は**スキーマだけ**を用意する。`projects` 行の同期は行わない。
+      既存の壊れた `config.yaml` があっても `init` は終了コード 0 で終わる（詳細設計 17.2）
+    """
+    existed = layout.db_path.exists()
+    ensure_project_db(layout, _config_for_db(layout))
+    return ScaffoldEntry(
+        path=layout.db_path,
+        relative=layout.relative(layout.db_path),
+        action="skipped" if existed else "created",
+    )
+
+
+def _config_for_db(layout: ProjectLayout) -> Config | None:
+    """`projects` 行の同期に使う設定。読めなければ `None`（同期しない）。"""
+    try:
+        return load_config(layout.config_path)
+    except ConfigError:
+        return None
 
 
 def _ensure_base_dir(layout: ProjectLayout) -> None:

@@ -16,7 +16,7 @@ from media_agent.project.scaffold import (
     render_config_template,
 )
 
-#: 詳細設計 12.1 の8つの生成物（相対パス）。
+#: 詳細設計 12.1 の8つの生成物と、T-005 が足した DB（詳細設計 12.4）の相対パス。
 EXPECTED_ENTRIES: tuple[str, ...] = (
     ".media-agent/config.yaml",
     ".media-agent/strategy.md",
@@ -26,6 +26,7 @@ EXPECTED_ENTRIES: tuple[str, ...] = (
     ".media-agent/data/",
     ".media-agent/logs/",
     ".media-agent/.gitignore",
+    ".media-agent/data/media-agent.db",
 )
 
 TEMPLATE_ENTRIES: tuple[str, ...] = (
@@ -37,7 +38,7 @@ TEMPLATE_ENTRIES: tuple[str, ...] = (
 
 
 def test_creates_the_designed_entries_in_order(tmp_path: Path) -> None:
-    """8つの生成物を、詳細設計 12.6 の順で報告する。"""
+    """生成物を詳細設計 12.6 の順で報告する。**末尾の DB は T-005 が足した行**（12.4）。"""
     result = init_project(tmp_path)
 
     assert tuple(entry.relative for entry in result.entries) == EXPECTED_ENTRIES
@@ -188,8 +189,13 @@ def test_generated_config_is_validated(
     assert "config.yaml" in caught.value.message
 
 
-def test_db_file_is_not_created(tmp_path: Path) -> None:
-    """DB は `init` の生成物に含めない（順序制約 O-1 / 詳細設計 12.4。T-005 が接続する）。"""
+def test_db_file_is_created(tmp_path: Path) -> None:
+    """DB は `init` の最後に用意する（詳細設計 12.4。T-005 が接続した）。
+
+    T-004 の時点では「作られないこと」を確認していた（順序制約 O-1）。**接続点が入った
+    いま、期待値は反転する。** 受け入れテストは DB の有無を判定していない（申し送り N-1）。
+    """
     result = init_project(tmp_path)
 
-    assert not result.layout.db_path.exists()
+    assert result.layout.db_path.is_file()
+    assert result.action_for(".media-agent/data/media-agent.db") == "created"
