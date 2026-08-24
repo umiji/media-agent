@@ -155,11 +155,28 @@ X Connector、Google News / RSS / Web）は範囲外。
 
 ## ビルド・テスト・リント
 
-**未確定。T-004 でパッケージが作られ、実際に実行できるようになった時点で埋める。**
+**下記は T-004（2026-08-24）で実際に実行して通ったコマンドである。**
 
-予定のコマンドは `docs/design/stage0-architecture.md` 15.1 にある。
-**まだ実行できない**（`pyproject.toml` が存在しないため）。設計文書のコマンドを、
-ここに書かれた確定コマンドとして扱わないこと。
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"   # 開発環境の準備
+
+.venv/bin/pytest tests/unit                   # 単体テスト
+.venv/bin/pytest tests/acceptance             # 受け入れテスト
+.venv/bin/ruff check .                        # lint
+.venv/bin/ruff format --check .               # 整形の検査
+.venv/bin/mypy src                            # 型検査
+```
+
+**`pytest`（引数なし）は T-006 が完了するまで通らない。** T-006 のモジュールを import する
+受け入れテストが収集時に `ModuleNotFoundError` になり、pytest が収集エラーで中断するため。
+**`--continue-on-collection-errors` を既定に足さないこと。** 本物の収集エラーを隠す。
+
+`ruff` は `docs/` を対象外にしてある。**`ruff format` が Markdown 中の Python コードブロックを
+書き換えてしまうため**（T-004 が実地で確認）。この除外を外さないこと。
+
+コンソールスクリプトの疎通テストは、**仮想環境を有効化した状態**（`.venv/bin` が PATH にある状態）で
+実行すること。`.venv/bin/pytest` と前置しただけでは `shutil.which("media-agent")` が解決できない。
 
 ## コーディング規約
 
