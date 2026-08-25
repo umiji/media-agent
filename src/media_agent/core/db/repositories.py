@@ -376,8 +376,8 @@ class DecisionRepository(_Repository):
         self._conn.execute(
             "INSERT INTO decisions"
             " (decision_id, kind, agent, task_id, input, decision, reason, action,"
-            "  result, error, timestamp)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "  result, error, timestamp, agent_version)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 record.decision_id,
                 record.kind,
@@ -390,6 +390,8 @@ class DecisionRepository(_Repository):
                 None if record.result is None else dump_json(record.result),
                 record.error,
                 to_iso(record.timestamp),
+                # スキーマ版数 2（詳細設計 6.4）。**正本はこの列である**（11.3）。
+                record.agent_version,
             ),
         )
         self._conn.commit()

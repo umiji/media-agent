@@ -27,7 +27,7 @@ __all__ = [
 
 #: この実装が期待する DB スキーマ版数（詳細設計 7.1）。`config.version` とも
 #: パッケージ版数とも独立である（用語集「スキーマ版数」）。
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 #: 版数 1 が作るテーブル（要件定義書16節の6 Entity）。`doctor` の `db.schema` 検査が使う。
 TABLE_NAMES: tuple[str, ...] = (
@@ -140,6 +140,15 @@ _V1_STATEMENTS: tuple[str, ...] = (
     "CREATE INDEX idx_decisions_kind_action_ts ON decisions (kind, action, timestamp)",
 )
 
+#: 版数 2 の差分（詳細設計 6.4 / T-012 の D-2）。**追加のみ・NULL 可**であり、
+#: 既存行を書き換えない・削除しない（共通の停止条件 S-2 に当たらない）。
+#:
+#: 却下案: 版数1の DDL に列を直接足す（`SCHEMA_VERSION` は 1 のまま）→ 既存の版数1の DB が
+#: 列を欠いたまま「版数1」を自称し、`doctor` は合格を出すのに実行時に落ちる（7.3）。
+_V2_STATEMENTS: tuple[str, ...] = (
+    "ALTER TABLE decisions ADD COLUMN agent_version INTEGER",
+)
+
 #: 適用順の Migration 一覧。**過去の要素を書き換えない。** 既存の DB は適用済みであり、
 #: 書き換えても再実行されないため、実体とコードが食い違う（変更は新しい version を足す）。
 MIGRATIONS: tuple[Migration, ...] = (
@@ -147,6 +156,11 @@ MIGRATIONS: tuple[Migration, ...] = (
         version=1,
         description="Stage 0 の6 Entity を作成する",
         statements=_V1_STATEMENTS,
+    ),
+    Migration(
+        version=2,
+        description="decisions に agent_version を追加する（要件20.5）",
+        statements=_V2_STATEMENTS,
     ),
 )
 

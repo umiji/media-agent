@@ -117,6 +117,7 @@ def test_agent_run_is_recorded_with_all_nine_items(stack: _Stack) -> None:
 
     returned = stack.recorder.record_agent_run(
         agent="echo",
+        agent_version=1,
         task_id=task.task_id,
         input={"message": "hi"},
         decision="completed",
@@ -144,6 +145,7 @@ def test_jsonl_keys_are_never_omitted(stack: _Stack) -> None:
     """値が無い項目は**キーを落とさず `null`**（詳細設計 11.3）。"""
     stack.recorder.record_agent_run(
         agent="echo",
+        agent_version=1,
         task_id=stack.task_id(),
         input={},
         decision="completed",
@@ -161,6 +163,7 @@ def test_record_is_persisted_in_the_decisions_table(stack: _Stack) -> None:
     """**正本は `decisions` テーブル**、JSONL はその写し（詳細設計 11.1）。"""
     returned = stack.recorder.record_agent_run(
         agent="echo",
+        agent_version=1,
         task_id=stack.task_id(),
         input={"message": "hi"},
         decision="completed",
@@ -185,6 +188,7 @@ def test_jsonl_is_written_as_readable_sorted_json(stack: _Stack) -> None:
     """`ensure_ascii=False` / `sort_keys=True`（罠 D-T12。再現性のため）。"""
     stack.recorder.record_agent_run(
         agent="echo",
+        agent_version=1,
         task_id=stack.task_id(),
         input={"b": 2, "a": "日本語"},
         decision="completed",
@@ -203,6 +207,7 @@ def test_records_are_appended_not_rotated(stack: _Stack) -> None:
     for _ in range(3):
         stack.recorder.record_agent_run(
             agent="echo",
+            agent_version=1,
             task_id=stack.task_id(),
             input={},
             decision="completed",
@@ -220,6 +225,7 @@ def test_failed_run_is_recorded_as_an_error_without_traceback(stack: _Stack) -> 
     """`decision == "error"`、`error` は1行（詳細設計 11.1 / 11.3）。"""
     stack.recorder.record_agent_run(
         agent="fail",
+        agent_version=1,
         task_id=stack.task_id("fail"),
         input={},
         decision="error",
@@ -250,6 +256,7 @@ def test_audit_is_not_suppressed_by_log_level(stack: _Stack, tmp_path: Path) -> 
         setup_logging(level=LogLevel.ERROR, log_path=log_path)
         stack.recorder.record_agent_run(
             agent="echo",
+            agent_version=1,
             task_id=task_id,
             input={},
             decision="completed",
@@ -269,6 +276,7 @@ def test_audit_file_is_not_the_log_file(stack: _Stack, tmp_path: Path) -> None:
     """出力先が別である（詳細設計 11.1 の表）。"""
     stack.recorder.record_agent_run(
         agent="echo",
+        agent_version=1,
         task_id=stack.task_id(),
         input={},
         decision="completed",
@@ -287,6 +295,7 @@ def test_secret_looking_keys_are_masked_in_both_destinations(stack: _Stack) -> N
     """マスクは**唯一の書き込み口**で一度だけ行う（詳細設計 11.4）。"""
     returned = stack.recorder.record_agent_run(
         agent="echo",
+        agent_version=1,
         task_id=stack.task_id(),
         input={"api_key": "s3cret-value", "message": "hi"},
         decision="completed",
@@ -364,6 +373,7 @@ def test_jsonl_failure_is_logged_but_does_not_raise(
     with caplog.at_level(logging.ERROR, logger=f"{ROOT_LOGGER_NAME}.test"):
         returned = stack.recorder.record_agent_run(
             agent="echo",
+            agent_version=1,
             task_id=task_id,
             input={},
             decision="completed",
@@ -382,6 +392,7 @@ def test_database_failure_raises(stack: _Stack) -> None:
     with pytest.raises(sqlite3.Error):
         stack.recorder.record_agent_run(
             agent="echo",
+            agent_version=1,
             task_id=task_id,
             input={},
             decision="completed",

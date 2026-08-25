@@ -92,6 +92,8 @@ class AgentRunner:
         agent = self._registry.get(agent_name)
         input_payload = dict(payload or {})
 
+        # **版数を掴むのは Runner である**（詳細設計 11.3 の「値の出どころ」）。
+        agent_version = agent.version
         task = self._tasks.create(agent=agent_name, type=task_type, input=input_payload)
         task = self._tasks.transition(task.task_id, TaskStatus.running)
         self._logger.info("agent=%s task=%s started", agent_name, task.task_id)
@@ -108,15 +110,18 @@ class AgentRunner:
         except Exception as exc:
             # `BaseException`（KeyboardInterrupt / SystemExit）は捕捉しない。
             # 利用者の中断を握り潰さないため（詳細設計 8.3）。
-            return self._finish_failed(task, agent_name, input_payload, exc, started_at)
+            return self._finish_failed(
+                task, agent_name, agent_version, input_payload, exc, started_at
+            )
         return self._finish_completed(
-            task, agent_name, input_payload, output, started_at
+            task, agent_name, agent_version, input_payload, output, started_at
         )
 
     def _finish_completed(
         self,
         task: Task,
         agent_name: str,
+        agent_version: int,
         input_payload: dict[str, Any],
         output: AgentOutput,
         started_at: datetime,
@@ -127,6 +132,7 @@ class AgentRunner:
         )
         self._audit.record_agent_run(
             agent=agent_name,
+            agent_version=agent_version,
             task_id=task.task_id,
             input=input_payload,
             decision=output.decision,
@@ -146,6 +152,7 @@ class AgentRunner:
         self,
         task: Task,
         agent_name: str,
+        agent_version: int,
         input_payload: dict[str, Any],
         exc: Exception,
         started_at: datetime,
@@ -155,6 +162,7 @@ class AgentRunner:
         failed = self._tasks.transition(task.task_id, TaskStatus.failed, error=message)
         self._audit.record_agent_run(
             agent=agent_name,
+            agent_version=agent_version,
             task_id=task.task_id,
             input=input_payload,
             decision=ERROR_DECISION,

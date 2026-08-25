@@ -197,6 +197,8 @@ class DecisionRow(_Row):
     result: dict[str, Any] | None
     error: str | None
     timestamp: datetime
+    #: 実行した Agent の版数（スキーマ版数 2。`policy_check` と版数1 の行は `None`）。
+    agent_version: int | None = None
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> DecisionRow:
@@ -212,4 +214,5 @@ class DecisionRow(_Row):
             result=load_json(row["result"]),
             error=row["error"],
             timestamp=from_iso(row["timestamp"]),
+            agent_version=row["agent_version"],
         )

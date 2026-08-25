@@ -37,7 +37,10 @@ __all__ = [
 ]
 
 #: JSONL の各行が持つメタ情報 `schema_version` の値。監査記録の形が変わったら上げる。
-AUDIT_SCHEMA_VERSION = 1
+#: **1 -> 2**（T-012 / D-2）。`agent_version` が加わって行の形が変わったため。
+#: 据え置くと、読み手が「古い行にキーが無い」のか「その実行で値が無かった」のかを
+#: 判別できない（詳細設計 11.3 の却下案）。
+AUDIT_SCHEMA_VERSION = 2
 
 #: 要件定義書5.5節の9項目（詳細設計 11.3 の対応表）。**JSONL は必ず全キーを持つ。**
 AUDIT_KEYS: tuple[str, ...] = (
@@ -113,6 +116,9 @@ class AuditRecord(BaseModel):
     error: str | None = None
     kind: AuditKind
     decision_id: str = Field(default_factory=new_id)
+    #: 実行した Agent の `version`（詳細設計 8.1）。**要件20.5 の再現性の受け皿である**
+    #: （T-012 / D-2）。`kind="policy_check"` は Agent が実行していないため `None`。
+    agent_version: int | None = None
 
     def to_jsonl_payload(self) -> dict[str, Any]:
         """JSONL の1行にする辞書（詳細設計 11.3）。
@@ -132,6 +138,9 @@ class AuditRecord(BaseModel):
             "error": self.error,
             "kind": self.kind,
             "decision_id": self.decision_id,
+            # メタ情報。**要件定義書5.5節の9項目には数えない**（詳細設計 11.3）。
+            # 9項目の対応表を10項目にすると、要件との対応が読めなくなる。
+            "agent_version": self.agent_version,
             "schema_version": AUDIT_SCHEMA_VERSION,
         }
 
@@ -181,6 +190,7 @@ class AuditRecorder:
         self,
         *,
         agent: str,
+        agent_version: int,
         task_id: str,
         input: dict[str, Any],
         decision: str,
@@ -188,11 +198,17 @@ class AuditRecorder:
         result: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> AuditRecord:
-        """Agent の実行を記録する（詳細設計 11.3 の `kind="agent_run"`）。"""
+        """Agent の実行を記録する（詳細設計 11.3 の `kind="agent_run"`）。
+
+        `agent_version` は**必須**である。値の出どころは `AgentRunner` であり、
+        **Runner 以外が組み立てない**（詳細設計 11.3 の表）。既定値を持たせると、
+        記録先が用意されているのに値が入らない経路ができる。
+        """
         return self.record(
             AuditRecord(
                 timestamp=self._clock(),
                 agent=agent,
+                agent_version=agent_version,
                 task=task_id,
                 input=input,
                 decision=decision,
@@ -227,6 +243,8 @@ class AuditRecorder:
                 result=dict(decision.detail),
                 error=None,
                 kind="policy_check",
+                # Agent が実行していないため `None`（詳細設計 11.3 の表）。
+                agent_version=None,
             )
         )
 
