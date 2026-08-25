@@ -18,6 +18,7 @@ from media_agent.cli import diagnostics
 from media_agent.cli.diagnostics import (
     CHECK_ORDER,
     REQUIRED_GITIGNORE_ENTRIES,
+    CheckResult,
     CheckStatus,
     run_diagnostics,
 )
@@ -331,3 +332,132 @@ class TestEnvNotTrackedInsideGit:
         layout = self._git_project(tmp_path)
 
         assert _statuses(layout)["security.env_not_tracked"] is CheckStatus.skipped
+
+
+# --- 構造破損のときの hint（詳細設計 13.2 の検査2・7・10 / 17.4 の R-6。T-014） ----------
+
+
+def _check(layout: ProjectLayout, check_id: str) -> CheckResult:
+    return next(c for c in run_diagnostics(layout).checks if c.id == check_id)
+
+
+def _replace_with_file(path: Path) -> None:
+    shutil.rmtree(path)
+    path.write_text("これはディレクトリではありません\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("name", ("agents", "memory", "data", "logs"))
+def test_structure_dirs_hint_asks_to_quarantine_a_regular_file(
+    layout: ProjectLayout, name: str
+) -> None:
+    """通常ファイルなら `退避` を助言する（`media-agent init` だけでは復旧しない）。"""
+    _replace_with_file(layout.base / name)
+
+    check = _check(layout, "structure.dirs")
+
+    assert check.status is CheckStatus.fail
+    assert check.hint is not None
+    assert "退避" in check.hint
+    assert "media-agent init" in check.hint
+
+
+def test_structure_dirs_hint_stays_init_when_a_directory_is_merely_missing(
+    layout: ProjectLayout,
+) -> None:
+    """**無いだけ**なら従来どおり `init` を助言する（退避するものが無い）。"""
+    layout.memory_dir.joinpath(".gitkeep").unlink()
+    layout.memory_dir.rmdir()
+
+    check = _check(layout, "structure.dirs")
+
+    assert check.status is CheckStatus.fail
+    assert check.hint is not None
+    assert "退避" not in check.hint
+
+
+def test_db_file_hint_asks_to_quarantine_a_file_that_is_not_sqlite(
+    layout: ProjectLayout,
+) -> None:
+    """SQLite として開けない DB は `init` では直らない（既存を消さないため）。"""
+    layout.db_path.write_text("これは SQLite ではありません\n", encoding="utf-8")
+
+    check = _check(layout, "db.file")
+
+    assert check.status is CheckStatus.fail
+    assert check.hint is not None
+    assert "退避" in check.hint
+    assert "media-agent init" in check.hint
+
+
+def test_db_file_hint_asks_to_quarantine_a_data_dir_that_is_a_file(
+    layout: ProjectLayout,
+) -> None:
+    """`data/` が通常ファイルなら、DB を置く場所そのものが無い。"""
+    _replace_with_file(layout.data_dir)
+
+    check = _check(layout, "db.file")
+
+    assert check.status is CheckStatus.fail
+    assert check.hint is not None
+    assert "退避" in check.hint
+
+
+def test_db_file_hint_asks_to_quarantine_a_db_path_that_is_a_directory(
+    layout: ProjectLayout,
+) -> None:
+    """DB のパスがディレクトリでも同じ（詳細設計 17.4.1 の種別1）。"""
+    layout.db_path.unlink()
+    layout.db_path.mkdir()
+
+    check = _check(layout, "db.file")
+
+    assert check.status is CheckStatus.fail
+    assert check.hint is not None
+    assert "退避" in check.hint
+
+
+def test_db_file_hint_stays_init_when_the_database_is_merely_missing(
+    layout: ProjectLayout,
+) -> None:
+    """DB が無いだけなら `init` が作れる（退避は要らない）。"""
+    layout.db_path.unlink()
+
+    check = _check(layout, "db.file")
+
+    assert check.status is CheckStatus.fail
+    assert check.hint is not None
+    assert "退避" not in check.hint
+
+
+def test_logs_writable_hint_asks_to_quarantine_a_regular_file(
+    layout: ProjectLayout,
+) -> None:
+    """`logs/` が通常ファイルなら `退避` を助言する（詳細設計 13.2 の検査10）。"""
+    _replace_with_file(layout.logs_dir)
+
+    check = _check(layout, "logs.writable")
+
+    assert check.status is CheckStatus.fail
+    assert check.hint is not None
+    assert "退避" in check.hint
+    assert "media-agent init" in check.hint
+
+
+def test_diagnostics_never_raise_on_a_broken_structure(layout: ProjectLayout) -> None:
+    """`doctor` は構造破損でも例外を送出せず、15項目すべてを評価する（13.1）。"""
+    _replace_with_file(layout.logs_dir)
+    _replace_with_file(layout.data_dir)
+
+    report = run_diagnostics(layout)
+
+    assert tuple(check.id for check in report.checks) == CHECK_ORDER
+    assert report.overall == "fail"
+
+
+def test_diagnostics_do_not_repair_a_broken_structure(layout: ProjectLayout) -> None:
+    """壊れた対象を作り直さない（詳細設計 13.1 の副作用禁止 / 17.4 の R-2）。"""
+    _replace_with_file(layout.data_dir)
+
+    run_diagnostics(layout)
+
+    assert layout.data_dir.is_file()

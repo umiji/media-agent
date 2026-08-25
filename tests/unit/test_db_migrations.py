@@ -110,3 +110,65 @@ def test_a_failing_migration_leaves_no_partial_state(tmp_path: Path) -> None:
 
     assert schema_version(conn) == 0
     assert "ok" not in _tables(conn)
+
+
+# --- 版数 2（詳細設計 6.4 / 7.1・7.3。T-012 の D-2） -------------------------------------
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def test_version_two_adds_agent_version_to_decisions(tmp_path: Path) -> None:
+    """`decisions.agent_version` が要件20.5（再現性）の受け皿である（詳細設計 6.4）。"""
+    conn = connect(tmp_path / "db" / "media-agent.db")
+
+    ensure_schema(conn)
+
+    assert "agent_version" in _columns(conn, "decisions")
+    conn.close()
+
+
+def test_a_version_one_database_is_migrated_forward(tmp_path: Path) -> None:
+    """版数1 の既存 DB は、次に開いた時点で 2 へ上がる（詳細設計 7.2 の手順3）。
+
+    **Stage 0 の間に Migration の連鎖（0→1→2）が実際に1度走る**（7.3 の副産物）。
+    """
+    db_path = tmp_path / "db" / "media-agent.db"
+    conn = connect(db_path)
+    for statement in MIGRATIONS[0].statements:
+        conn.execute(statement)
+    conn.execute("PRAGMA user_version = 1")
+    conn.commit()
+    assert "agent_version" not in _columns(conn, "decisions")
+
+    assert ensure_schema(conn) == SCHEMA_VERSION
+
+    assert schema_version(conn) == 2
+    assert "agent_version" in _columns(conn, "decisions")
+    conn.close()
+
+
+def test_migrating_forward_keeps_existing_rows(tmp_path: Path) -> None:
+    """版数 2 は**追加のみ**であり、既存行を書き換えない（共通の停止条件 S-2 の判定）。"""
+    db_path = tmp_path / "db" / "media-agent.db"
+    conn = connect(db_path)
+    for statement in MIGRATIONS[0].statements:
+        conn.execute(statement)
+    conn.execute("PRAGMA user_version = 1")
+    conn.execute(
+        "INSERT INTO decisions"
+        " (decision_id, kind, agent, task_id, input, decision, reason, action,"
+        "  result, error, timestamp)"
+        " VALUES ('d1','agent_run','echo',NULL,'{}','completed','理由',"
+        "         NULL,NULL,NULL,'2026-01-01T00:00:00.000000Z')"
+    )
+    conn.commit()
+
+    ensure_schema(conn)
+
+    row = conn.execute("SELECT * FROM decisions WHERE decision_id = 'd1'").fetchone()
+    assert row["decision"] == "completed"
+    # 既存行は列が増えただけで、値は `NULL`（追加のみ・NULL 可）。
+    assert row["agent_version"] is None
+    conn.close()

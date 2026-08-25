@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 
 from media_agent.core.config.loader import load_config
-from media_agent.errors import ScaffoldError
+from media_agent.errors import DatabaseError, ProjectStructureError, ScaffoldError
 from media_agent.project.scaffold import (
     FALLBACK_PROJECT_NAME,
     init_project,
@@ -199,3 +200,98 @@ def test_db_file_is_created(tmp_path: Path) -> None:
 
     assert result.layout.db_path.is_file()
     assert result.action_for(".media-agent/data/media-agent.db") == "created"
+
+
+# --- preflight（詳細設計 12.5 / 17.4 の R-5。T-014） -------------------------------------
+
+
+def _initialized(root: Path) -> Path:
+    """`init` 済みのプロジェクトを作る（壊す前の状態）。"""
+    init_project(root)
+    return root
+
+
+@pytest.mark.parametrize("name", ("agents", "memory", "data", "logs"))
+def test_preflight_rejects_a_directory_replaced_by_a_file(
+    tmp_path: Path, name: str
+) -> None:
+    """4ディレクトリのどれかが通常ファイルなら `ProjectStructureError`（R-5）。"""
+    root = _initialized(tmp_path)
+    target = root / ".media-agent" / name
+    shutil.rmtree(target)
+    target.write_text("これはディレクトリではありません\n", encoding="utf-8")
+
+    with pytest.raises(ProjectStructureError) as excinfo:
+        init_project(root)
+
+    assert str(target) in excinfo.value.message
+    assert "退避" in (excinfo.value.hint or "")
+    assert "media-agent init" in (excinfo.value.hint or "")
+
+
+def test_preflight_rejects_a_db_path_that_is_a_directory(tmp_path: Path) -> None:
+    """`data/media-agent.db` がディレクトリなら止める（詳細設計 12.5 の検査対象）。"""
+    root = tmp_path
+    base = root / ".media-agent"
+    (base / "data" / "media-agent.db").mkdir(parents=True)
+
+    with pytest.raises(ProjectStructureError):
+        init_project(root)
+
+
+def test_preflight_writes_nothing_before_it_stops(tmp_path: Path) -> None:
+    """**生成物を1つも書かずに終わる**（詳細設計 17.4 の R-5。受け入れテスト S-D6）。
+
+    ここで止めないと `config.yaml` だけが復活し、中途半端な状態が残る。
+    """
+    root = _initialized(tmp_path)
+    base = root / ".media-agent"
+    shutil.rmtree(base / "logs")
+    (base / "logs").write_text("壊れている\n", encoding="utf-8")
+    (base / "config.yaml").unlink()
+    before = {path.name for path in base.iterdir()}
+
+    with pytest.raises(ProjectStructureError):
+        init_project(root)
+
+    assert not (base / "config.yaml").exists()
+    assert {path.name for path in base.iterdir()} == before
+
+
+def test_preflight_does_not_repair_the_broken_target(tmp_path: Path) -> None:
+    """壊れた対象を退避も削除もしない（詳細設計 17.4 の R-2）。"""
+    root = _initialized(tmp_path)
+    target = root / ".media-agent" / "data"
+    shutil.rmtree(target)
+    target.write_text("利用者のファイルかもしれない\n", encoding="utf-8")
+
+    with pytest.raises(ProjectStructureError):
+        init_project(root)
+
+    assert target.is_file()
+    assert target.read_text(encoding="utf-8") == "利用者のファイルかもしれない\n"
+
+
+def test_a_broken_database_is_reported_as_a_database_error(tmp_path: Path) -> None:
+    """DB の**中身**は preflight で見ず、`ensure_project_db` が報告する（12.5）。
+
+    種別2 は `DatabaseError`（終了コード 1）であり、こちらも 70 にはならない。
+    """
+    root = _initialized(tmp_path)
+    db_path = root / ".media-agent" / "data" / "media-agent.db"
+    db_path.write_text("これは SQLite データベースではありません\n", encoding="utf-8")
+
+    with pytest.raises(DatabaseError) as excinfo:
+        init_project(root)
+
+    assert "SQLite" in excinfo.value.message
+    assert "退避" in (excinfo.value.hint or "")
+
+
+def test_preflight_passes_on_a_healthy_project(tmp_path: Path) -> None:
+    """壊れていなければ preflight は素通りする（冪等性を壊さない。詳細設計 12.5）。"""
+    root = _initialized(tmp_path)
+
+    result = init_project(root)
+
+    assert all(entry.action == "skipped" for entry in result.entries)

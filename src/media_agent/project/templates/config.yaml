@@ -1,5 +1,7 @@
 # Media Agent プロジェクト設定
-# 項目の意味: docs/design/stage0-detail.md 5章
+# 項目の意味と既定値:
+#   https://github.com/umiji/media-agent/blob/main/docs/features/project-directory.md
+# 書き換えたら media-agent doctor で検査できる
 # このファイルは Git で追跡してよい（認証情報を書かないこと）
 
 version: 1

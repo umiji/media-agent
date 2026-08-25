@@ -420,3 +420,64 @@ def test_record_is_the_single_entry_point(stack: _Stack) -> None:
     assert returned.input == {"password": "***"}
     assert returned.reason == "複数行 の理由"
     assert stack.records()[-1]["reason"] == "複数行 の理由"
+
+
+# --- agent_version（詳細設計 11.3。T-012 の D-2） ----------------------------------------
+
+
+def test_agent_run_records_the_agent_version(stack: _Stack) -> None:
+    """`agent_run` は Runner から渡された版数を JSONL と正本の両方へ書く。"""
+    task_id = stack.task_id()
+
+    returned = stack.recorder.record_agent_run(
+        agent="echo",
+        agent_version=3,
+        task_id=task_id,
+        input={},
+        decision="completed",
+        reason="理由",
+    )
+
+    assert stack.records()[-1]["agent_version"] == 3
+    stored = stack.decisions.get(returned.decision_id)
+    assert stored is not None
+    assert stored.agent_version == 3
+
+
+def test_policy_check_records_a_null_agent_version(stack: _Stack) -> None:
+    """`policy_check` は Agent が実行していないため `None`（詳細設計 11.3 の表）。"""
+    returned = stack.recorder.record_policy_check(
+        request=_Request(), decision=_Decision()
+    )
+
+    record = stack.records()[-1]
+    assert "agent_version" in record, "キーを省略しない（詳細設計 11.3）"
+    assert record["agent_version"] is None
+    stored = stack.decisions.get(returned.decision_id)
+    assert stored is not None
+    assert stored.agent_version is None
+
+
+def test_jsonl_declares_the_audit_schema_version(stack: _Stack) -> None:
+    """行の形が変わったため `AUDIT_SCHEMA_VERSION` は 2（詳細設計 11.3 の却下案）。"""
+    stack.recorder.record_agent_run(
+        agent="echo",
+        agent_version=1,
+        task_id=stack.task_id(),
+        input={},
+        decision="completed",
+        reason="理由",
+    )
+
+    assert stack.records()[-1]["schema_version"] == AUDIT_SCHEMA_VERSION
+    assert AUDIT_SCHEMA_VERSION == 2
+
+
+def test_agent_version_is_not_counted_among_the_nine_required_items() -> None:
+    """**要件定義書5.5節の9項目は9項目のままである**（詳細設計 11.3）。
+
+    `agent_version` はメタ情報として足す。対応表を10項目にすると、要件との対応が
+    読めなくなる。
+    """
+    assert "agent_version" not in AUDIT_KEYS
+    assert len(AUDIT_KEYS) == 9

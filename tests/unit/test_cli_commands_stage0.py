@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,9 @@ from media_agent.cli.commands.run import DEFAULT_AGENT, DEFAULT_INPUT
 from media_agent.cli.commands.task import NO_TASKS
 from media_agent.core.observability.log import setup_logging
 from media_agent.project.scaffold import init_project
+
+#: `--limit` の安定文字列（詳細設計 17.3）。
+MSG_LIMIT = "--limit"
 
 EXIT_OK = 0
 EXIT_RUNTIME_ERROR = 1
@@ -229,3 +233,114 @@ def test_task_list_honours_the_limit(runner: CliRunner, project: Path) -> None:
     )
 
     assert len(payload["tasks"]) == 2
+
+
+# -- task list --limit の値域（詳細設計 16.2。T-014 / D-3） ---------------------------
+
+
+@pytest.mark.parametrize("value", ("0", "-1", "-20"))
+def test_task_list_rejects_a_limit_below_one(
+    runner: CliRunner, project: Path, value: str
+) -> None:
+    """`0` 以下は `UsageError`（終了コード 2）。安定文字列は `--limit`（詳細設計 17.3）。"""
+    result = _invoke(runner, project, "task", "list", "--limit", value)
+
+    assert result.exit_code == EXIT_USAGE
+    assert MSG_LIMIT in result.stderr
+    assert result.stdout.strip() == ""
+
+
+def test_task_list_accepts_the_lower_bound(runner: CliRunner, project: Path) -> None:
+    """下限そのもの（`1`）は通る。**上限は設けない**（詳細設計 16.2）。"""
+    assert _invoke(runner, project, "task", "list", "--limit", "1").exit_code == EXIT_OK
+    assert (
+        _invoke(runner, project, "task", "list", "--limit", "100000").exit_code
+        == EXIT_OK
+    )
+
+
+def test_task_list_reports_status_before_limit(
+    runner: CliRunner, project: Path
+) -> None:
+    """両方が不正なら `--status` を先に報告する（詳細設計 16.2 の検査の順序）。"""
+    result = _invoke(
+        runner, project, "task", "list", "--status", "nope", "--limit", "0"
+    )
+
+    assert result.exit_code == EXIT_USAGE
+    assert "--status" in result.stderr
+    assert MSG_LIMIT not in result.stderr
+
+
+def test_task_list_reports_a_broken_structure_before_the_limit_range(
+    runner: CliRunner, project: Path
+) -> None:
+    """構造破損（1）は値域（2）より先（詳細設計 17.4 の R-7 の順序）。"""
+    logs = project / ".media-agent" / "logs"
+    shutil.rmtree(logs)
+    logs.write_text("これはディレクトリではありません\n", encoding="utf-8")
+
+    result = _invoke(runner, project, "task", "list", "--limit", "0")
+
+    assert result.exit_code == EXIT_RUNTIME_ERROR
+
+
+# -- open_session の構造検査（詳細設計 15.1 の手順2 / 17.4 の R-4。T-014） -------------
+
+
+@pytest.mark.parametrize("command", (("status",), ("run",), ("task", "list")))
+@pytest.mark.parametrize("name", ("data", "logs"))
+def test_runtime_commands_stop_on_a_broken_structure(
+    runner: CliRunner, project: Path, command: tuple[str, ...], name: str
+) -> None:
+    """`data/` `logs/` が通常ファイルなら終了コード 1（**70 ではない**）。"""
+    target = project / ".media-agent" / name
+    shutil.rmtree(target)
+    target.write_text("これはディレクトリではありません\n", encoding="utf-8")
+
+    result = _invoke(runner, project, *command)
+
+    assert result.exit_code == EXIT_RUNTIME_ERROR
+    assert "ディレクトリではありません" in result.stderr
+    assert "退避" in result.stderr
+
+
+@pytest.mark.parametrize("command", (("status",), ("run",), ("task", "list")))
+@pytest.mark.parametrize("name", ("agents", "memory"))
+def test_runtime_commands_ignore_directories_they_do_not_read(
+    runner: CliRunner, project: Path, command: tuple[str, ...], name: str
+) -> None:
+    """`agents/` `memory/` は実行経路が読まないため止まらない（詳細設計 17.4 の R-4）。"""
+    target = project / ".media-agent" / name
+    shutil.rmtree(target)
+    target.write_text("これはディレクトリではありません\n", encoding="utf-8")
+
+    assert _invoke(runner, project, *command).exit_code == EXIT_OK
+
+
+def test_runtime_commands_do_not_create_the_log_file_when_broken(
+    runner: CliRunner, project: Path
+) -> None:
+    """構造検査は**ログの構成より前**に行う（`logs/` が壊れた状態で開かない）。"""
+    logs = project / ".media-agent" / "logs"
+    shutil.rmtree(logs)
+    logs.write_text("これはディレクトリではありません\n", encoding="utf-8")
+
+    result = _invoke(runner, project, "status")
+
+    assert result.exit_code == EXIT_RUNTIME_ERROR
+    assert logs.read_text(encoding="utf-8") == "これはディレクトリではありません\n"
+
+
+def test_a_database_that_is_not_sqlite_is_reported_as_exit_code_one(
+    runner: CliRunner, project: Path
+) -> None:
+    """種別2（DB が SQLite でない）も終了コード 1（詳細設計 17.4 の R-1）。"""
+    db = project / ".media-agent" / "data" / "media-agent.db"
+    db.write_text("これは SQLite ではありません\n", encoding="utf-8")
+
+    result = _invoke(runner, project, "status")
+
+    assert result.exit_code == EXIT_RUNTIME_ERROR
+    assert "SQLite" in result.stderr
+    assert "退避" in result.stderr
