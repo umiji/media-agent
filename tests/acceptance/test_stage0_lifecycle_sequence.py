@@ -80,7 +80,12 @@ def test_repeating_the_whole_sequence_preserves_recorded_tasks(
 
     テンプレートの冪等性は S-A が判定している。ここで判定するのは **DB の中身**である。
     再初期化で Task が消えるなら、利用者はうっかり `init` を打つだけで履歴を失う。
+
+    版数は実装の `SCHEMA_VERSION` と比較する（詳細設計 19.1。T-013 が T-012 / D-2 に
+    伴って更新した。**版数を上げるたびにテストを直さずに済む形が正しい**）。
     """
+    from media_agent.core.db.migrations import SCHEMA_VERSION
+
     assert cli("init", project=project_dir).exit_code == EXIT_OK
     assert cli("run", "--agent", "echo", project=project_dir).exit_code == EXIT_OK
     first_ids = {
@@ -101,7 +106,7 @@ def test_repeating_the_whole_sequence_preserves_recorded_tasks(
 
     payload = parse_json(cli("--json", "status", project=project_dir).stdout)
     assert payload["tasks"]["total"] == 2
-    assert payload["database"]["schema_version"] == 1
+    assert payload["database"]["schema_version"] == SCHEMA_VERSION
 
 
 def test_failed_run_does_not_break_the_following_commands(

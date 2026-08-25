@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from media_agent.core.observability.audit import AUDIT_SCHEMA_VERSION
 from media_agent.core.policy import PolicyRequest
 from tests.acceptance.expectations import (
     AUDIT_KEYS,
@@ -61,7 +62,7 @@ def test_agent_run_is_recorded_with_all_nine_items(
     assert record["error"] is None
     assert record["kind"] == "agent_run"
     assert record["decision_id"]
-    assert record["schema_version"] == 1
+    assert record["schema_version"] == AUDIT_SCHEMA_VERSION
 
 
 def test_audit_record_is_persisted_in_the_decisions_table(
