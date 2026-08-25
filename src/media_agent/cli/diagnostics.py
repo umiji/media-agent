@@ -100,6 +100,16 @@ _SYNTAX_HINT = "YAML の構文を確認してください"
 _BUG_HINT = "実装の不具合です。報告してください"
 
 
+def _quarantine_hint(targets: str) -> str:
+    """構造破損（詳細設計 17.4）のときの `hint`（検査2・7・10。R-6）。
+
+    **`media-agent init` だけを助言すると、利用者がそれに従っても復旧しない**
+    （T-009 / RV-1 の実害）。`doctor` の助言と、その助言を実行した結果は一致して
+    いなければならない。安定文字列は `退避` と `media-agent init` の2つ（17.3）。
+    """
+    return f"{targets} を退避してから media-agent init を実行してください"
+
+
 @dataclass(frozen=True)
 class CheckResult:
     """1項目の検査結果（詳細設計 13.2 / 13.3）。"""
@@ -160,7 +170,7 @@ def run_diagnostics(layout: ProjectLayout) -> DiagnosticsReport:
     （13.4 の意図した非対称）。
     """
     config_probe = _probe_config(layout.config_path)
-    db_probe = _probe_db(layout.db_path)
+    db_probe = _probe_db(layout)
     checks = (
         _check_structure_files(layout),
         _check_structure_dirs(layout),
@@ -210,8 +220,20 @@ def _check_structure_files(layout: ProjectLayout) -> CheckResult:
 
 
 def _check_structure_dirs(layout: ProjectLayout) -> CheckResult:
-    """検査2: `agents/` `memory/` `data/` `logs/` の4つが存在する。"""
+    """検査2: `agents/` `memory/` `data/` `logs/` の4つが存在する（ディレクトリである）。
+
+    **通常ファイルとして存在する場合は hint を変える**（詳細設計 13.2 の検査2 /
+    17.4 の R-6）。`init` は既存ファイルを消さないため、退避を先に助言しないと
+    利用者が行き止まりに入る。
+    """
     targets = (layout.agents_dir, layout.memory_dir, layout.data_dir, layout.logs_dir)
+    broken = [layout.relative(path) for path in targets if _is_not_a_directory(path)]
+    if broken:
+        return _fail(
+            "structure.dirs",
+            f"ディレクトリではありません: {', '.join(broken)}",
+            _quarantine_hint(", ".join(broken)),
+        )
     missing = [layout.relative(path) for path in targets if not path.is_dir()]
     if missing:
         return _fail(
@@ -220,6 +242,11 @@ def _check_structure_dirs(layout: ProjectLayout) -> CheckResult:
             _INIT_HINT,
         )
     return _ok("structure.dirs", "agents / memory / data / logs がそろっています")
+
+
+def _is_not_a_directory(path: Path) -> bool:
+    """存在するが、ディレクトリではない（詳細設計 17.4.1 の種別1）。"""
+    return path.exists() and not path.is_dir()
 
 
 def _is_readable_file(path: Path) -> bool:
@@ -404,9 +431,29 @@ class _DbProbe:
     foreign_keys: CheckResult
 
 
-def _probe_db(db_path: Path) -> _DbProbe:
-    """検査7・8・9 をまとめて評価する。**DB を作らない**（詳細設計 13.1）。"""
+def _probe_db(layout: ProjectLayout) -> _DbProbe:
+    """検査7・8・9 をまとめて評価する。**DB を作らない**（詳細設計 13.1）。
+
+    **`data/` が通常ファイルの場合と、DB を SQLite として開けない場合は hint を変える**
+    （詳細設計 13.2 の検査7 / 17.4 の R-6）。どちらも `media-agent init` だけでは
+    復旧せず、先に退避が要る。
+    """
+    db_path = layout.db_path
     if not db_path.is_file():
+        broken = _broken_db_location(db_path)
+        if broken is not None:
+            relative = layout.relative(broken)
+            return _DbProbe(
+                file=_fail(
+                    "db.file",
+                    f"DB を置けません: {relative} の形が違います",
+                    _quarantine_hint(relative),
+                ),
+                schema=_skipped("db.schema", "DB を開けないため検査できません"),
+                foreign_keys=_skipped(
+                    "db.foreign_keys", "DB を開けないため検査できません"
+                ),
+            )
         return _DbProbe(
             file=_fail("db.file", f"DB がありません: {db_path}", _INIT_HINT),
             schema=_skipped("db.schema", "DB が無いため検査できません"),
@@ -426,8 +473,14 @@ def _probe_db(db_path: Path) -> _DbProbe:
                 conn.execute("PRAGMA foreign_keys").fetchone()[0]
             )
     except sqlite3.Error as exc:
+        # SQLite として開けない DB は `init` では直らない（既存ファイルを消さないため）。
+        # 退避を先に助言する（詳細設計 13.2 の検査7 / 17.4 の R-6）。
         return _DbProbe(
-            file=_fail("db.file", f"DB を SQLite として開けません: {exc}", _INIT_HINT),
+            file=_fail(
+                "db.file",
+                f"DB を SQLite として開けません: {exc}",
+                _quarantine_hint(layout.relative(db_path)),
+            ),
             schema=_skipped("db.schema", "DB を開けないため検査できません"),
             foreign_keys=_skipped("db.foreign_keys", "DB を開けないため検査できません"),
         )
@@ -436,6 +489,19 @@ def _probe_db(db_path: Path) -> _DbProbe:
         schema=_check_db_schema(version, tables),
         foreign_keys=_check_foreign_keys(foreign_keys_enabled),
     )
+
+
+def _broken_db_location(db_path: Path) -> Path | None:
+    """DB を置けない形（構造破損の種別1）なら、その対象を返す（詳細設計 17.4.1）。
+
+    `data/` が通常ファイル、または DB のパスがディレクトリの場合。どちらも
+    `init` が既存を消さないため、退避が先に要る。
+    """
+    if _is_not_a_directory(db_path.parent):
+        return db_path.parent
+    if db_path.is_dir():
+        return db_path
+    return None
 
 
 @contextmanager
@@ -510,8 +576,18 @@ def _check_logs_writable(layout: ProjectLayout) -> CheckResult:
     """検査10: `logs/` に一時ファイルを作成して削除できる。
 
     **作った一時ファイルは必ず削除する**（詳細設計 13.1）。
+    `logs/` が通常ファイルの場合は構造破損として退避を助言する（17.4 の R-6）。
     """
     hint = "ディレクトリの権限を確認してください"
+    if _is_not_a_directory(layout.logs_dir):
+        # **通常ファイルとして存在する場合は hint を変える**（詳細設計 13.2 の検査10 /
+        # 17.4 の R-6）。`init` は既存ファイルを消さないため、退避が先に要る。
+        relative = layout.relative(layout.logs_dir)
+        return _fail(
+            "logs.writable",
+            f"ディレクトリではありません: {relative}",
+            _quarantine_hint(relative),
+        )
     if not layout.logs_dir.is_dir():
         return _fail(
             "logs.writable",
