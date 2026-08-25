@@ -7,10 +7,11 @@ T-005,2026-08-23,2026-08-24,DB層とLogging/Audit実装,完了,高,org-implement
 T-006,2026-08-23,2026-08-24,Agent Runtime・Task・Policy実装,完了,高,org-implementation,T-005（ブロッカー）,docs/tasks/T-006.md
 T-007,2026-08-23,2026-08-24,doctor/status/run統合とCI整備,完了,高,org-implementation,T-006（ブロッカー）,docs/tasks/T-007.md
 T-008,2026-08-23,2026-08-24,Stage 0 受け入れ・回帰テスト実行,完了,高,org-test,T-007（ブロッカー）,docs/tasks/T-008.md
-T-009,2026-08-23,2026-08-24,Stage 0 レビュー,レビュー中,高,org-review,T-008（ブロッカー） T-014（ブロッカー）,docs/tasks/T-009.md
+T-009,2026-08-23,2026-08-25,Stage 0 レビュー,レビュー中,高,org-review,T-008（ブロッカー） T-014（ブロッカー）,docs/tasks/T-009.md
 T-010,2026-08-23,2026-08-24,READMEとPO確認用実行手順書,完了,中,org-documentation,T-007（ブロッカー）,docs/tasks/T-010.md
 T-011,2026-08-24,2026-08-24,受け入れテストのDB接続リーク修正,未着手,中,org-test,T-009（推奨: レビュー指摘と併せて直すため）,docs/tasks/T-011.md
 T-012,2026-08-24,2026-08-25,構造破損時の期待値と設計の空白3件の確定,完了,高,org-design,無し,docs/tasks/T-012.md
 T-013,2026-08-24,2026-08-25,T-012の期待値を受け入れテストへ変換,完了,高,org-test,T-012（ブロッカー）,docs/tasks/T-013.md
-T-014,2026-08-24,2026-08-25,構造破損時の例外処理とレビュー指摘の修正,実装中,高,org-implementation,T-013（ブロッカー）,docs/tasks/T-014.md
+T-014,2026-08-24,2026-08-25,構造破損時の例外処理とレビュー指摘の修正,完了,高,org-implementation,T-013（ブロッカー）,docs/tasks/T-014.md
 T-015,2026-08-25,2026-08-25,受け入れテストのシナリオ記号の重複解消,未着手,低,org-design,無し,docs/tasks/T-015.md
+T-016,2026-08-25,2026-08-25,利用者向け文書のスキーマ版数追随,未着手,中,org-documentation,T-014（ブロッカー）,docs/tasks/T-016.md
