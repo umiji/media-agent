@@ -120,6 +120,15 @@ MSG_DOCTOR = "doctor"
 MSG_NOT_A_DIRECTORY = "ディレクトリではありません"
 MSG_NO_TASKS = "(タスクはありません)"
 
+#: 構造破損の安定文字列（詳細設計 17.3 の追加3行 / 17.4.3。T-012 / D-1）。
+#: `MSG_NOT_A_DIRECTORY` は種別1、`MSG_SQLITE` は種別2、`MSG_QUARANTINE` は Hint 側。
+MSG_SQLITE = "SQLite"
+MSG_QUARANTINE = "退避"
+
+#: オプション名（詳細設計 17.3 の `--limit` 行 / 16.2。T-012 / D-3）。
+MSG_LIMIT_OPTION = "--limit"
+MSG_STATUS_OPTION = "--status"
+
 #: 終了コード表（方式設計 6.5）。
 EXIT_OK = 0
 EXIT_RUNTIME_ERROR = 1
