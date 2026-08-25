@@ -50,7 +50,7 @@ def _database_error(db_path: Path, exc: BaseException) -> DatabaseError:
     **終了コード 70（内部エラー）**で終わる（T-009 / RV-1）。**この層から素の外部例外を
     出さない**（品質基準 Q8）。
 
-    メッセージは**受け取った `Path` だけ**で組み立てる。`.media-agent` という文字列を
+    メッセージは**受け取った `Path` だけ**で組み立てる。プロジェクト配下のディレクトリ名を
     `core/` に書かない（品質基準 Q7）。文面は 17.4.3 が規範。
     """
     return DatabaseError(
