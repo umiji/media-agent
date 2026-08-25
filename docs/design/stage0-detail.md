@@ -2,6 +2,8 @@
 
 - 出所タスク: T-002（`docs/tasks/T-002.md`）
 - 作成日: 2026-08-23
+- 更新: 2026-08-25 — T-012（`docs/tasks/T-012.md`）。T-009 のレビューが「設計の空白」と判定した3件を確定した。
+  **D-1 構造破損時の期待値（17.2 / 17.4）／D-2 `Agent.version` の永続化（6.4 / 7.1 / 11.3）／D-3 `--limit` の値域（16.2）**
 - 前提文書: `docs/design/stage0-architecture.md`（T-001 方式設計）。**本文書はその上に載る。矛盾する場合は方式設計が優先し、本文書の誤りとして扱う**
 - 対象: 要件定義書 v0.2（`docs/requirements-media-agent-v0.2.md`）の **Stage 0 のみ**
 - 読み手: T-003（受け入れテスト）、T-004〜T-007（実装）、T-008〜T-009（テスト・レビュー）
@@ -119,9 +121,17 @@ class ProjectLayout:
 def layout_for(root: Path) -> ProjectLayout: ...
 def find_project_root(start: Path) -> Path:
     """方式設計 6.3 の探索。見つからなければ ProjectNotInitializedError。"""
+
+def verify_project_structure(layout: ProjectLayout, *, paths: Sequence[Path]) -> None:
+    """指定されたパスが「ディレクトリであるべきなのに通常ファイル」でないことを確かめる。
+
+    破れていれば ProjectStructureError（終了コード 1）。**修復も削除もしない**（17.4 の R-2）。
+    呼び出し側が `paths` を渡すのは、コマンドごとに必要な構造だけを検査するため（17.4 の R-4）。
+    """
 ```
 
 - `core/` の関数は `ProjectLayout` か個別の `Path` を**引数で受け取る**。自分で組み立てない
+- **`verify_project_structure` が Project 層にあるのは、`.media-agent` 配下の構造を知ってよいのがこの層だけだからである**（品質基準 Q7。T-012 / 17.4）
 - 相対パスの表示（`init` / `doctor` / `status` の出力）は `root` からの相対で行う。区切りは常に `/`（`PurePosixPath` 化して表示する。Windows 差異を出力に持ち込まない）
 
 ---
@@ -380,8 +390,11 @@ def open_project_db(layout: ProjectLayout, config: Config | None = None) -> sqli
 
 - `row_factory = sqlite3.Row`（列名でアクセスする。位置参照を書かない）
 - **`detect_types` を使わない。** 時刻は 6.2 の文字列として扱い、変換は Repository が行う。sqlite3 の暗黙変換に依存しない
+- **`connect` / `open_project_db` は `sqlite3.Error` と `OSError` を `DatabaseError`（終了コード 1）へ包む**（T-012 / 17.4 の R-1、品質基準 Q8）。
+  包まないと、DB が SQLite でない場合や `data/` が通常ファイルの場合に終了コード 70（内部エラー）で終わる。**この層から素の外部例外を出さない**
+- メッセージは**受け取った `Path` だけ**で組み立てる。`.media-agent` という文字列を `core/` に書かない（品質基準 Q7）。文面は 17.4.3 が規範
 
-### 6.4 DDL（スキーマ版数 1）
+### 6.4 DDL（スキーマ版数 1 と、版数 2 の差分）
 
 ```sql
 CREATE TABLE projects (
@@ -467,6 +480,21 @@ CREATE INDEX idx_decisions_task_id   ON decisions (task_id);
 CREATE INDEX idx_decisions_kind_action_ts ON decisions (kind, action, timestamp);
 ```
 
+**スキーマ版数 2 の差分（T-012 / D-2。Migration は 7.1）:**
+
+```sql
+ALTER TABLE decisions ADD COLUMN agent_version INTEGER;   -- NULL 可
+```
+
+| 列 | 値 |
+| --- | --- |
+| `agent_version` | `kind='agent_run'`: 実行した Agent の `version`（8.1 の `ClassVar[int]`）／`kind='policy_check'`: **`NULL`**（Agent が実行していないため） |
+
+- **これが要件定義書 20.5「同じ Input・設定・Agent Version から実行内容を追跡可能とする」の受け皿である。**
+  `input` / `decision` / `reason` / `timestamp` は版数1で既に持っていたが、**Agent Version だけ記録先が無かった**（T-009 / RV-3）
+- 却下案: `tasks` にも `agent_version` を持たせる → 同じ事実が2か所に書かれる。追跡の起点は監査記録（`decisions`）であり、そこに1つあれば足りる
+- 却下案: `AuditRecord` と `audit.jsonl` にだけ持たせ、DB 列は作らない → **正本は DB である**（11.3）。正本から辿れない項目は、JSONL を消した瞬間に失われる
+
 要件定義書16節との差分（**すべて追加であり、削除は無い**）:
 
 | テーブル | 差分 | 理由 |
@@ -474,7 +502,7 @@ CREATE INDEX idx_decisions_kind_action_ts ON decisions (kind, action, timestamp)
 | `posts` | `source` → `source_id`（sources への外部キー） | 要件の `source` は関連そのもの。列名に `_id` を付けて外部キーであることを型で示す |
 | `performances` | 代理主キー `performance_id` と `UNIQUE(post_id, collected_at)` | Metrics は同じ投稿に対して時系列で複数回集まる。他テーブルと主キーの形を揃える |
 | `tasks` | `started_at` / `error` を追加 | `pending`→`running`→`completed` の遷移時刻を観測可能にする（S-F）。失敗理由を Task 自身が持たないと `task list` で失敗を説明できない |
-| `decisions` | `kind` / `task_id` / `action` / `result` / `error` を追加 | **要件定義書5.5節の Audit 9項目を、この1テーブルで完全に満たすため**（11.3）。要件16節の Decision は「最低限」の列挙である |
+| `decisions` | `kind` / `task_id` / `action` / `result` / `error` を追加。**版数 2 で `agent_version` を追加**（T-012 / D-2） | **要件定義書5.5節の Audit 9項目を、この1テーブルで完全に満たすため**（11.3）。要件16節の Decision は「最低限」の列挙である。`agent_version` は要件20.5 の受け皿である |
 
 **`decisions` は Decision Entity であると同時に Audit の永続面である。** 2つの表を作らない。
 却下案: `audit_records` テーブルを別に作る → 同じ事実が2か所に書かれ、どちらが正か決められなくなる。要件16節の Decision も残るため二重管理になる。
@@ -552,7 +580,7 @@ class DecisionRepository:
 **`PRAGMA user_version` を版数の保持先とし、前進のみの連番 Migration をコード内の一覧で管理する。**
 
 ```python
-SCHEMA_VERSION: int = 1
+SCHEMA_VERSION: int = 2          # T-012 / D-2 で 1 → 2
 
 @dataclass(frozen=True)
 class Migration:
@@ -562,6 +590,8 @@ class Migration:
 
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(version=1, description="Stage 0 の6 Entity を作成する", statements=(...6.4 の DDL...)),
+    Migration(version=2, description="decisions に agent_version を追加する（要件20.5）",
+              statements=("ALTER TABLE decisions ADD COLUMN agent_version INTEGER",)),
 )
 
 def ensure_schema(conn: sqlite3.Connection) -> int:
@@ -583,6 +613,18 @@ def ensure_schema(conn: sqlite3.Connection) -> int:
 | 部分適用が残らない | Migration ごとに1トランザクション。失敗したら版数も更新されない |
 | 版数を DB 自身が持つ | `PRAGMA user_version`（方式設計 3.4 補足の制約） |
 | アプリ版数から独立 | `SCHEMA_VERSION` はパッケージ版数と別（方式設計12章） |
+
+**版数 2 を足した判断（T-012 / D-2）:**
+
+- `agent_version` の追加は **`ALTER TABLE ... ADD COLUMN`（追加のみ・NULL 可）であり、既存行を書き換えない・削除しない**。
+  したがって共通の停止条件 S-2（既存データの破壊・移行の影響）に該当しない
+- **既に版数1の DB を持っている環境（開発機の作業用 DB）は、次に `init` / `status` / `run` が開いた時点で自動的に 2 へ上がる**（7.2 の手順3）。
+  `doctor` は上がる前でも `db.schema` を `fail`（終了コード 5）にし、`media-agent init で移行されます` と助言する。**行き止まりにならない**
+- 却下案: **版数1の DDL に列を直接足す（`SCHEMA_VERSION` は 1 のまま）** → 7.1 の「前進のみの連番」を破る。
+  既存の版数1の DB は**列が無いまま「版数1」を自称する**ため、`doctor` は合格を出し、実行時に `sqlite3.OperationalError` → 終了コード 70 になる。
+  **これは D-1 で潰したばかりの失敗の形そのものである**（`doctor` が通るのにコマンドが 70）
+- 却下案: Stage 1 へ送る → 24章の一覧と D-2 の項を参照。**Stage 0 の今は移行対象の利用者データが1件も無く、最も安く足せる時点である**
+- 副産物: **Stage 0 の間に Migration の連鎖（0→1→2）が実際に1度走る。** 版数1しか無いと、7.2 の手順3が一度も実行されないまま Stage 1 を迎える
 
 ### 7.4 却下案
 
@@ -625,6 +667,7 @@ class AgentContext:
 class Agent(ABC):
     name: ClassVar[str]                 # ^[a-z][a-z0-9-]{0,31}$
     version: ClassVar[int]              # 1 以上。Agent の実装が変わったら上げる（要件20.5）
+                                        # 実行のたびに decisions.agent_version へ永続化される（11.3 / D-2）
     description: ClassVar[str]
 
     @abstractmethod
@@ -702,6 +745,8 @@ class AgentRunner:
    4. **例外を再送出しない**（T-006 完了条件2「例外がそのまま外へ漏れない」）
 8. `TaskRunResult` を返す
 
+- 手順 6-2 / 7-2 の `audit.record_agent_run(...)` には、**手順1 で引いた Agent の `version` を `agent_version=` として渡す**（T-012 / D-2、11.3）。
+  失敗時（手順7）も渡す。**どの版で失敗したかは、成功時と同じだけ追跡に要る**
 - 捕捉するのは `Exception` であり、`BaseException`（`KeyboardInterrupt` / `SystemExit`）は捕捉しない。**利用者の中断を握り潰さない**
 - 手順2〜3で失敗した場合（DB 障害等）は例外がそのまま外へ出る。これは Agent の失敗ではなく基盤の失敗であり、Task に記録する手段自体が無い
 - 却下案: 失敗時に例外を送出する → 呼び出し側が毎回 try/except を書くことになり、書き忘れた経路で Task が `running` のまま残る
@@ -973,13 +1018,14 @@ class AuditRecord(BaseModel):           # frozen
     error: str | None
     kind: Literal["agent_run", "policy_check"]
     decision_id: str
+    agent_version: int | None = None    # T-012 / D-2。agent_run のとき必須、policy_check は None
 
 class AuditRecorder:
     def __init__(self, *, decisions: DecisionRepository, audit_path: Path,
                  logger: logging.Logger, clock: Callable[[], datetime] = utcnow) -> None
     def record(self, record: AuditRecord) -> AuditRecord            # 唯一の書き込み口
-    def record_agent_run(self, *, agent: str, task_id: str, input: dict[str, Any],
-                         decision: str, reason: str,
+    def record_agent_run(self, *, agent: str, agent_version: int, task_id: str,
+                         input: dict[str, Any], decision: str, reason: str,
                          result: dict[str, Any] | None = None,
                          error: str | None = None) -> AuditRecord
     def record_policy_check(self, *, request: PolicyRequest,
@@ -1000,14 +1046,27 @@ class AuditRecorder:
 | 8 | result | `result` | `result`（JSON） | `result` |
 | 9 | error | `error` | `error` | `error` |
 
-**JSONL の各行は、上の9キーを必ず全て持つ**（値が無い場合は `null`）。加えてメタ情報として `kind` / `decision_id` / `schema_version`（整数 `1`）を持つ。
+**JSONL の各行は、上の9キーを必ず全て持つ**（値が無い場合は `null`）。加えてメタ情報として
+`kind` / `decision_id` / **`agent_version`** / `schema_version`（整数 **`2`**）を持つ。
 **キーを省略しない。** 「キーが無い」と「値が null」を読み手が区別できなくなるため。
+
+**`agent_version` は要件定義書5.5節の9項目に含まれない**（要件は9項目である）。**メタ情報として足す**（T-012 / D-2）。
+9項目の対応表を10項目にしない。要件との対応が読めなくなるため。
+
+| 事項 | 決定（T-012 / D-2） |
+| --- | --- |
+| DB（正本） | `decisions.agent_version`（6.4 のスキーマ版数 2）。`DecisionRow` にも同名の項目が入る |
+| JSONL | メタ情報のキー `agent_version`。`agent_run` は整数、`policy_check` は `null` |
+| `AUDIT_SCHEMA_VERSION` | **`1` → `2`**。行の形が変わったため。**据え置くと、読み手が「古い行にキーが無い」のか「その実行で値が無かった」のかを判別できない** |
+| 値の出どころ | `AgentRunner` が実行対象の Agent クラスの `version`（8.1）を渡す。**Runner 以外が組み立てない** |
+| 却下案 | `AUDIT_SCHEMA_VERSION` を 1 のままにする → 版数の意味（行の形の版数）が失われる |
 
 種別ごとの値の入れ方:
 
 | 項目 | `kind="agent_run"` | `kind="policy_check"` |
 | --- | --- | --- |
 | `agent` | 実行した Agent 名 | `request.requested_by`（既定 `policy-engine`） |
+| `agent_version` | 実行した Agent の `version`（整数） | **`null`** |
 | `task` | 実行中の `task_id` | `request.task_id`（無ければ `null`） |
 | `input` | Agent へ渡した `payload` | `{"action":…, "topic":…, "target_user":…}` |
 | `decision` | `AgentOutput.decision`、失敗時は `"error"` | `outcome` の値（`allow` / `require_approval` / `deny`） |
@@ -1204,6 +1263,12 @@ logs/
 
 - `--force` は**テンプレート由来の4ファイルだけ**を上書きする。データとログと利用者が書いたファイルは対象外。この境界を実装で緩めないこと
 - `.media-agent` が**ファイルとして存在する**（ディレクトリでない）場合は `ScaffoldError`（終了コード 1）。安定文字列: パスと `ディレクトリではありません`
+- **`init` は生成物を1つも書く前に構造を検査する（preflight。T-012 / 17.4 の R-5）。** 検査対象は
+  `.media-agent/` 自体・`agents/` `memory/` `data/` `logs/` の4ディレクトリ・`data/media-agent.db`（ディレクトリでないこと）。
+  いずれかが破れていれば `ProjectStructureError`（終了コード 1）で終わり、**ファイルを1つも作らない・変更しない**
+- **DB が SQLite として開けない場合だけは preflight で検出しない**（中身の検査を `init` に持ち込まないため）。12.4 の `ensure_project_db` が
+  `DatabaseError`（終了コード 1）を送出する。このとき**テンプレート由来の生成物はすでに書かれていることがある**。`init` は冪等であるため、
+  利用者が DB を退避してから再実行すれば残りが補われる（17.4.4 の手順3）
 - 却下案A: 既存があればエラーで終了する → 「あとから足された生成物（将来 `.media-agent/` に増えるファイル）を補えない」。方式設計7章が `init` に冪等性を要求している
 - 却下案B: 既定で上書きする → 利用者が書いた `strategy.md` / `rules.md` / `config.yaml` を、警告なしに失わせる。**最も避けるべき挙動**
 
@@ -1264,15 +1329,15 @@ def init_project(root: Path, *, force: bool = False) -> ScaffoldResult: ...
 | # | check id | 合格（`ok`）条件 | `warn` / `skipped` になる場合 | `fail` のときの `hint` |
 | --- | --- | --- | --- | --- |
 | 1 | `structure.files` | `config.yaml` / `strategy.md` / `rules.md` が存在し、読み取れる | — | `media-agent init` を実行してください（既存ファイルは変更されません） |
-| 2 | `structure.dirs` | `agents/` `memory/` `data/` `logs/` の4つが存在する（ディレクトリである） | — | 同上 |
+| 2 | `structure.dirs` | `agents/` `memory/` `data/` `logs/` の4つが存在する（ディレクトリである） | — | **存在しない場合**: 同上／**通常ファイルとして存在する場合**: `<相対パス> を退避してから media-agent init を実行してください`（T-012 / 17.4 の R-6） |
 | 3 | `config.syntax` | `config.yaml` が `yaml.safe_load` で読め、mapping である | — | YAML の構文を確認してください |
 | 4 | `config.schema` | 5章のスキーマ検証を通る | — | 違反したキーパスを `message` に列挙する |
 | 5 | `config.version` | `version == 1` | `version` キーが無い場合は `warn`（`1` とみなす） | サポートする config 版数は 1 です |
 | 6 | `config.consistency` | `content.posts_per_day <= actions.post.max_per_day`（`max_per_day` が `null` なら常に `ok`） | 上回る場合は `warn` | — |
-| 7 | `db.file` | `data/media-agent.db` が存在し、SQLite として開ける | — | `media-agent init` を実行してください |
+| 7 | `db.file` | `data/media-agent.db` が存在し、SQLite として開ける | — | **無い場合**: `media-agent init` を実行してください／**SQLite として開けない場合**と**`data/` が通常ファイルの場合**: `<相対パス> を退避してから media-agent init を実行してください`（T-012 / 17.4 の R-6） |
 | 8 | `db.schema` | `PRAGMA user_version == SCHEMA_VERSION` かつ6テーブルがすべて存在する | — | 版数が古い場合: `media-agent init` で移行されます／新しい場合: Media Agent を更新してください |
 | 9 | `db.foreign_keys` | 検査用の接続で `PRAGMA foreign_keys` が `1` を返す | — | 実装の不具合（罠 T-2）。報告してください |
-| 10 | `logs.writable` | `logs/` に一時ファイルを作成して削除できる | — | ディレクトリの権限を確認してください |
+| 10 | `logs.writable` | `logs/` に一時ファイルを作成して削除できる | — | **通常ファイルとして存在する場合**: `<相対パス> を退避してから media-agent init を実行してください`（T-012 / 17.4 の R-6）／**それ以外**: ディレクトリの権限を確認してください |
 | 11 | `security.gitignore` | `.media-agent/.gitignore` が存在し、`data/` `logs/` `.env` の3つを**行として**含む | — | 要件14.2。`media-agent init --force` で復元できます |
 | 12 | `security.env_not_tracked` | `.media-agent/` 配下に `.env*` が**存在しない**、または存在して Git の追跡対象でない | `.env*` が無い場合は **`skipped`**（メッセージ: Stage 0 では認証情報を使いません）／Git リポジトリでない場合も `skipped` | `.env` が Git の追跡対象です。`git rm --cached` で外してください |
 | 13 | `agents.registry` | `build_default_registry()` が1つ以上の Agent を返し、`echo` が引ける | — | 実装の不具合。報告してください |
@@ -1282,6 +1347,10 @@ def init_project(root: Path, *, force: bool = False) -> ScaffoldResult: ...
 - **検査 12 が「認証情報の不在を異常としない」ことの実体である。** `.env` が無いのは正常（`skipped`）。**`fail` になるのは「あって、しかも Git に追跡されている」場合だけ**
 - 検査 12 の Git 判定は `git ls-files --error-unmatch <path>` 相当の確認で行う。`git` コマンドが無い環境では `skipped`
 - 検査 9 は罠 T-2（外部キーが黙って効かない）の再発をコマンドで検出するために置く
+- **検査 2・7・10 の `hint` は、構造破損（17.4）のときだけ文言を変える。** `media-agent init` だけを助言すると、
+  利用者がそれに従っても復旧しない（T-009 / RV-1 の実害）。**`doctor` の助言と、その助言を実行した結果は一致していなければならない**（17.4 の R-6）。
+  安定文字列は `退避` と `media-agent init` の2つ。**message ではなく `hint` を判定する**（`--json` の `checks[].hint`）
+- **`doctor` は構造破損でも例外を送出しない。** 15項目すべてを評価し、`fail` があれば終了コード 5 で終わる（13.1・13.4 と同じ原則）
 - **Stage 0 では検査しないもの**: 外部サービスへの疎通、API キーの有無・妥当性、依存パッケージのバージョン整合（`pip check` 相当）、`.claude/` の有無
 
 ### 13.3 出力
@@ -1333,6 +1402,7 @@ JSON（`--json`）:
 - **`status` は `ensure_project_db` を呼ぶ**（DB が無ければ作る）。`doctor` と違い、状態を見るために DB が必要であり、
   無い場合に失敗するより作るほうが利用者の意図に合う
 - Config が読めない場合は `ConfigError`（終了コード 4）。未初期化なら終了コード 3
+- **構造が壊れている場合は終了コード 1**（17.4。`data/` や `logs/` が通常ファイル、DB が SQLite でない）。**`status` は壊れた対象を直さない**
 - 終了コード: 0
 
 テキスト（stdout）:
@@ -1363,7 +1433,7 @@ JSON（`--json`）:
   "config": {"version": 1, "primary_platform": "x", "posts_per_day": 3,
              "require_approval": false,
              "actions": {"post": "auto", "reply": "approval", "repost": "approval", "like": "disabled"}},
-  "database": {"path": ".media-agent/data/media-agent.db", "schema_version": 1},
+  "database": {"path": ".media-agent/data/media-agent.db", "schema_version": 2},
   "agents": [{"name": "echo", "version": 1, "description": "..."},
              {"name": "fail", "version": 1, "description": "..."}],
   "tasks": {"total": 3,
@@ -1394,12 +1464,16 @@ media-agent run [--agent NAME] [--input JSON] [--json]
 手順:
 
 1. プロジェクトルート解決（未初期化なら終了コード 3）
-2. `load_config()`（不正なら終了コード 4）
-3. `setup_logging()` にファイルハンドラを追加
-4. `ensure_project_db(layout, config)`
-5. `build_default_registry()` → `TaskService` / `AuditRecorder` / `AgentRunner` を組み立てる
-6. `runner.run(agent_name, payload)`
-7. 結果を出力し、終了コードを決める
+2. **構造の検査**（`data/` `logs/` `db_path` の3つ。壊れていれば終了コード 1。T-012 / 17.4）
+3. `load_config()`（不正なら終了コード 4）
+4. `setup_logging()` にファイルハンドラを追加
+5. `ensure_project_db(layout, config)`
+6. `build_default_registry()` → `TaskService` / `AuditRecorder` / `AgentRunner` を組み立てる
+7. `runner.run(agent_name, payload)`
+8. 結果を出力し、終了コードを決める
+
+**手順2 は `status` / `task list` と共通の経路（`cli/session.py`）に置く。** `run` だけの検査にしない。
+**手順2 で止まった場合、Task も監査記録も1件も作られない**（受け入れテスト S-D7 の判定対象。19.1）。
 
 | Task の最終状態 | 終了コード | 例外 |
 | --- | --- | --- |
@@ -1465,6 +1539,7 @@ error   : AgentFailedForVerificationError: 検証用 Agent 'fail' は常に失�
 ## 16. `agent list` / `task list`
 
 いずれも**読み取り専用**（方式設計 6.4、T-007 完了条件4-b）。未初期化なら終了コード 3。
+**`task list` は構造が壊れていれば終了コード 1**（17.4）。**`agent list` は Config も DB も読まないため、構造が壊れていても 0 で成功する**（17.2）。
 
 ### 16.1 `media-agent agent list`
 
@@ -1486,6 +1561,24 @@ TASK_ID                               AGENT  TYPE       STATUS     CREATED_AT   
 
 - 既定 `--limit 20`、`created_at` の降順。`--status` は5つの状態名のいずれか（他は `UsageError` / 終了コード 2）
 - 0件のときは `(タスクはありません)` の1行（ヘッダは出す）
+
+**`--limit` の値域（T-012 / D-3。`--status` と扱いを揃える）:**
+
+| 入力 | 挙動 | 終了コード |
+| --- | --- | --- |
+| `1` 以上の整数 | その件数まで表示する。**上限は設けない** | 0 |
+| `0` 以下の整数（`0` / `-1` / `-20` …） | `click.UsageError`。メッセージ: `--limit は 1 以上の整数で指定してください: <値>` | **2** |
+| 整数に解釈できない値（`abc` / `1.5`） | Click の型変換（`type=int`）が処理する | **2** |
+
+- **検査の場所と順序**: `--limit` の値域は `--status` と**同じ場所**（`open_session` でプロジェクトを開いた**後**）で検査する。
+  したがって未初期化ディレクトリでは 3 が優先し、17.2 の1行目と食い違わない。**両方が不正なら `--status` を先に報告する**
+- 型変換（`abc`）だけは Click がプロジェクトの解決より前に処理するため、未初期化でも 2 になる。**これは Click の既定であり、本設計はそれに従う**
+- 安定文字列: `--limit`（17.3）
+- 却下案: `click.IntRange(min=1)` を使う → 検査が型変換の段で起き、**未初期化ディレクトリでも 2 が返って 17.2 の1行目と食い違う**。メッセージも Click 既定の英文になり `--status` と揃わない
+- 却下案: `--limit 0` を「0件表示」として許す → **行があるのに `(タスクはありません)` と出る**（T-009 / RV-6 の実測）。利用者は「Task が無い」と読む
+- 却下案: 負値を「無制限」として許す → SQLite の `LIMIT -1` という実装詳細が CLI の仕様になる。無制限が要るなら将来 `--all` を足す（拡張点）
+- 却下案: 上限（例 `1000`）を設ける → Stage 0 に根拠となる件数が無い。**説明できない上限を仕様にしない**
+- 却下案: `--status` 側を Click の `Choice` へ寄せて揃える → 既存の実装・受け入れテストが通っている判定を作り直すことになり、T-012 の変更範囲を超える
 - `--json`: `{"tasks": [ ... 14章 `recent_tasks` と同じ項目 ... ]}`
 - **`task cancel` 等の書き込み系サブコマンドは Stage 0 では作らない**（方式設計 6.4）。したがって Stage 0 で `cancelled` を作る経路は
   公開 API（`TaskService.transition`）だけである
@@ -1502,6 +1595,7 @@ TASK_ID                               AGENT  TYPE       STATUS     CREATED_AT   
 MediaAgentError (exit_code = 1)
 ├── ProjectNotInitializedError            (3)
 ├── ScaffoldError                         (1)
+├── ProjectStructureError                 (1)     # 構造破損（17.4。T-012 で追加）
 ├── ConfigError                           (4)
 │   ├── ConfigNotFoundError               (4)
 │   ├── ConfigParseError                  (4)
@@ -1530,11 +1624,21 @@ MediaAgentError (exit_code = 1)
 | 初期化済み・正常 | 0（冪等） | 0 | 0 | 0 | 0 | **10** | 0 |
 | `config.yaml` が壊れている | 0（触らない） | **5** | **4** | **4** | `agent list`=0 / `task list`=**4** | **10** | 0 |
 | `-C` の指定先が存在しない | 2 | 2 | 2 | 2 | 2 | 2 | 0 |
+| **`.media-agent/` が通常ファイル** | **1** | **3** | **3** | **3** | **3** | **10** | 0 |
+| **`data/media-agent.db` が SQLite ファイルでない** | **1** | **5** | **1** | **1** | `agent list`=0 / `task list`=**1** | **10** | 0 |
+| **`data/` が通常ファイル** | **1** | **5** | **1** | **1** | `agent list`=0 / `task list`=**1** | **10** | 0 |
+| **`logs/` が通常ファイル** | **1** | **5** | **1** | **1** | `agent list`=0 / `task list`=**1** | **10** | 0 |
+| **`agents/` または `memory/` が通常ファイル** | **1** | **5** | 0 | 0 | 0 | **10** | 0 |
 
 - **スタブコマンド（`setup` / `post` / `research` / `analyze`）は、プロジェクトの状態を見る前に終了コード 10 で終わる。**
   未実装であることは環境に依存しないため。安定文字列: `Stage` と `未実装`
 - `agent list` は Config を読まない（Registry は組み込みのみで、設定に依存しない）。`task list` は DB を読むため Config が要る
 - `--help` / `--version` は Click が処理し、プロジェクトの解決より前に終了する（終了コード 0）
+- **下4行が「構造破損」の行である**（T-012 / D-1）。終了コード 1 の根拠・メッセージ・復旧経路は **17.4** にある
+- **`.media-agent/` 自体が通常ファイルの行は構造破損ではなく「未初期化」として扱う**（17.4.1）。`init` だけが 1（`ScaffoldError`。12.5）で、
+  他は **3** になる。`is_initialized()` が `.media-agent/` を**ディレクトリとして**探すためであり、これは意図した挙動である（4.1）
+- **`agents/` `memory/` の破損では `status` / `run` / `task list` が 0 で成功する。** Stage 0 の実行経路がこの2つを読まないため
+  （Custom Agent は読み込まない。8.2）。**各コマンドは自分が必要とする構造だけを検査する**（17.4 の R-4）
 
 ### 17.3 エラー出力の形（stderr）
 
@@ -1553,8 +1657,78 @@ Hint: <対処（省略可）>
 | 遷移違反 | 遷移元と遷移先の状態名、`task_id` |
 | スタブ | `Stage`、`未実装` |
 | doctor 不合格 | `doctor`、不合格件数 |
+| **構造破損（ディレクトリであるべきパスが通常ファイル）** | 対象の**絶対パス**、`ディレクトリではありません`。Hint に `退避` と `media-agent init` |
+| **DB が SQLite として開けない** | DB の**絶対パス**、`SQLite`。Hint に `退避` と `media-agent init` |
+| **`--limit` の値域違反** | `--limit` |
 
 **テストは「終了コード」と「この表の安定文字列」だけを判定する。** 文面全体を判定対象にしない（方式設計の用語集「終了コード表」）。
+
+### 17.4 構造破損（structural breakage）— T-012 / D-1
+
+#### 17.4.1 定義
+
+**構造破損とは、`.media-agent/` は存在するが、その配下が期待する形をしていない状態をいう。** Stage 0 で扱うのは次の2種だけである。
+
+| 種別 | 具体例 |
+| --- | --- |
+| **種別1: ディレクトリであるべきパスが通常ファイル**（またはその逆） | `data/` `logs/` `agents/` `memory/` が通常ファイル。`data/media-agent.db` がディレクトリ |
+| **種別2: DB ファイルが SQLite として開けない** | `data/media-agent.db` がテキスト等（`sqlite3.DatabaseError: file is not a database`） |
+
+**未初期化（`.media-agent/` が無い・通常ファイル）は構造破損ではない。** 終了コード 3 の領分であり、17.2 の該当行が正典である。
+
+#### 17.4.2 規則
+
+| # | 規則 |
+| --- | --- |
+| **R-1** | 構造破損を検出したコマンドは **`ProjectStructureError`（種別1）／`DatabaseError`（種別2）で終わる。いずれも終了コード 1**。素の `OSError` / `sqlite3.Error` を CLI 層へ通さない（品質基準 Q8）。**70 で終わってはならない** |
+| **R-2** | **どのコマンドも、壊れた対象を自動で削除・移動・上書きしない。** 12.5 の「`data/` `logs/` の中身、利用者のファイルは絶対に触らない」を構造破損時にも守る |
+| **R-3** | メッセージは対象の**絶対パス**を含む。Hint は **「退避してから `media-agent init` を実行する」**という復旧手順を示す（17.4.4） |
+| **R-4** | **各コマンドは、自分が必要とする構造だけを検査する。** `status` / `run` / `task list` が検査するのは `data/`・`logs/`・`db_path` の3つだけ。`agents/` `memory/` の破損では止まらない（17.2 の最終行） |
+| **R-5** | **`init` は生成物を1つも書く前に構造を検査する**（preflight。12.5）。種別1 を検出したら何も書かずに終了コード 1 |
+| **R-6** | **`doctor` の Hint も R-3 と同じ手順を示す**（13.2 の検査2・7・10）。`doctor` の助言に従って行き止まりになる状態を作らない |
+| **R-7** | **異常が同時に複数ある場合の優先順位を、検査の順序で固定する。** `status` / `run` / `task list` では **未初期化（3） → 構造破損（1） → 設定エラー（4） → オプションの値域（2）** の順。例: 設定も構造も壊れていれば **1**（17.2 の「`config.yaml` が壊れている」行より構造破損の行が優先する）。`doctor` はこの順序に従わず、**全項目を列挙して 5** で終わる（13.1） |
+
+#### 17.4.3 例外とメッセージ（規範）
+
+```
+ProjectStructureError(MediaAgentError)      exit_code = 1
+    message: "{絶対パス} はディレクトリではありません"
+    hint:    "このパスにあるファイルを退避してから media-agent init を実行してください"
+
+DatabaseError（種別2。既存の型を使う）      exit_code = 1
+    message: "{DB の絶対パス} を SQLite データベースとして開けません"
+    details: 元の例外の1行（例 "file is not a database"）
+    hint:    "このファイルを退避してから media-agent init を実行してください"
+             "（init は既存ファイルを削除しません）"
+```
+
+- **種別2 を `DatabaseError`（1）にしたのは、`DatabaseVersionError`（1）との非対称を解消するためである**（T-009 / RV-1 の指摘）。
+  「DB が使えない」という同じ事実は、原因が版数でも中身でも**同じ終了コード 1** で終わる
+- `.media-agent/` 自体が通常ファイルのときの `init` は、**既存どおり `ScaffoldError`（1）** のままとする（12.5 で確定済み）。
+  安定文字列（`ディレクトリではありません`）と終了コードが `ProjectStructureError` と同じであるため、**受け入れテストからは区別できず、区別する必要もない**
+- 検出箇所（実装の裁量だが、置き場所の制約だけ示す）: 種別1 は **Project 層**（`.media-agent` のパスを知ってよい層。品質基準 Q7）。
+  種別2 は **`core/db` の接続（6.3）** が `sqlite3.Error` / `OSError` を包む。`core/` 側のメッセージは**受け取った `Path` だけ**で組み立てる
+
+#### 17.4.4 復旧経路（利用者から見た手順。これが行き止まりでないことの定義）
+
+1. `media-agent doctor` → 終了コード **5**。該当する check が `fail` で、その `hint` に **`退避`** と **`media-agent init`** が含まれる
+2. 利用者が対象のファイルを**退避（リネーム／移動）する**
+3. `media-agent init` → 終了コード **0**（不足分だけを作る。既存ファイルは変わらない）
+4. `media-agent doctor` → 終了コード **0**（`fail` 0件）
+
+**手順2 を飛ばして `init` を実行した場合は終了コード 1 で終わり、同じ Hint を出す。** 70（内部エラー）にはならない。
+
+#### 17.4.5 却下案
+
+| 却下案 | 却下理由 |
+| --- | --- |
+| **A: `init` が壊れた対象を自動で退避（リネーム）して作り直す** | 12.5 が確定させた「`data/` `logs/` の中身は絶対に触らない」を破る。**利用者のデータかもしれないファイルを、コマンドが黙って動かす**。復旧の主語は利用者のままにする |
+| **B: 構造破損に新しい終了コード（例 7）を割り当てる** | 終了コード表は方式設計 6.5 が持っており、本タスクの変更範囲外。コードを増やすと、`--help` にも要件にも説明の無い値が増える |
+| **C: `doctor` と揃えて終了コード 5 にする** | 5 は `DoctorCheckFailedError`（方式設計 6.5）に割り当て済み。`status` が 5 を返すと「doctor の検査に落ちた」と読める。**同じ状況を同じコードにするより、同じ意味を同じコードに保つほうが優先する** |
+| **D: 構造破損を「未初期化」(3) として扱う** | `.media-agent/` は現に存在する。「初期化されていません」は事実に反し、`init` が既存を補う（12.5）挙動とも食い違う |
+| **E: 破損していても degrade して続行する（`logs/` が使えなければ stderr だけへ出す）** | `run` が**監査記録を残せないまま実行**することになる（11.3 の「記録できない実行を進めない」・品質基準 Q9/Q10）。また `status` だけ通す・`run` は止める、という分岐は `open_session` の単一経路（`cli/session.py`）を割る |
+| **F: `UsageError`（2）にする** | 使い方の誤りではない。**環境の異常**である。2 に混ぜると `-C` の指定ミスと区別できない |
+| **G: 詳細設計 17.2 に書かず、実装側の裁量に委ねる** | T-009 が「実装は設計に違反していない。設計が期待値を定めていない」と判定した状態そのものに戻る |
 
 ---
 
@@ -1624,6 +1798,36 @@ coverage.xml
 - **テストは必ず `tmp_path` を使い、`-C/--project-dir` で対象を明示する**（罠 T-3）。`os.chdir` を使わない
 - 実行順序に依存する期待値を書かない。10.5 の上限判定は**同じ DB 内の履歴**に依存するため、テストごとに新しい一時プロジェクトを使う
 
+### 19.1 T-012 で追加した期待値（T-013 への引き渡し）
+
+**S-A〜S-I はそのまま有効である。** 下記は S-D（異常系）の延長であり、**T-013 が受け入れテストへ変換する対象**である。
+**ここに無い期待値を T-013 が自分で作らない**（19章冒頭の原則と同じ）。
+
+| ID | 期待値の所在 | 二値で判定できる形（要点） |
+| --- | --- | --- |
+| **S-D2**（構造破損 × コマンド） | 17.2 の下5行 / 17.4 | 壊し方3種（`data/media-agent.db` にテキストを書く／`logs/` を通常ファイルに置き換える／`data/` を通常ファイルに置き換える）× コマンド6種で、**17.2 の行のとおりの終了コード**になる。とくに `init` / `status` / `run` / `task list` が **1**（**70 でないこと**が判定の要点）。`doctor` は **5**、`agent list` は **0** |
+| **S-D3**（構造破損のメッセージ） | 17.3 / 17.4.3 | stderr に**対象の絶対パス**と、`ディレクトリではありません`（種別1）または `SQLite`（種別2）が現れる。Hint 行に `退避` と `media-agent init` が現れる |
+| **S-D4**（doctor の助言） | 13.2 の検査2・7・10 / 17.4 の R-6 | `doctor --json` の当該 check が `status == "fail"` で、その `hint` に `退避` と `media-agent init` が含まれる |
+| **S-D5**（復旧経路が行き止まりでない） | 17.4.4 | 4手順を順に実行して `doctor`=5 → 退避 → `init`=**0** → `doctor`=**0**（`summary.fail == 0`）。**この1本が RV-1 の実害に対する回帰テストである** |
+| **S-D6**（`init` の preflight） | 12.5 / 17.4 の R-5 | 種別1 が壊れた状態から `config.yaml` を削除して `init` → 終了コード 1 かつ **`config.yaml` が作られていない**（何も書かずに終わる） |
+| **S-D7**（`run` が記録を残さない） | 17.4 の R-1 / R-5 | `logs/` が通常ファイルの状態で `run` → 1。退避して `init` した後の `task list --json` の `tasks` が**空**（壊れた状態で Task 行が作られていない） |
+| **S-J**（`--limit` の値域） | 16.2 | `task list --limit 0` / `--limit -1` → **終了コード 2**、stderr に `--limit`。`--limit 1` → 0 で**1行だけ**。未初期化ディレクトリで `--limit 0` → **3**（プロジェクトの解決が先） |
+| **S-K**（`agent_version` の永続化） | 6.4 / 7.1 / 11.3 | `run --agent echo` の後、`audit.jsonl` の最終行に `agent_version` キーがあり、値が `agent list --json` の `echo` の `version` と一致する。`decisions` テーブルの同じ行の `agent_version` も同値。`PRAGMA user_version` が **2**。`doctor` は **0**（`db.schema` が `ok`） |
+
+- **S-D2 の壊し方は「ファイルを置き換える」ことで作る。** 権限を落とす（`chmod 000`）方法は取らない。**root で実行すると権限が効かず、環境によって結果が変わる**
+- S-D5 の「退避」はテストの中では `Path.rename` でよい。**製品側が退避することは無い**（17.4 の R-2）
+
+**既存の受け入れテストのうち、D-2 で期待値が変わるものが2つある**（T-012 が実測して特定した。**設計変更に伴う正当な更新であり、
+「落ちるテストを通すための書き換え」ではない**。台帳規約の禁止事項と区別すること）:
+
+| ファイル・行 | 現在の期待値 | D-2 後の期待値 | 直す主体 |
+| --- | --- | --- | --- |
+| `tests/acceptance/test_stage0_audit.py:64` | `record["schema_version"] == 1` | `AUDIT_SCHEMA_VERSION`（= 2）と比較する | **T-013（org-test）**。実装が自分で書き換えない |
+| `tests/acceptance/test_stage0_lifecycle_sequence.py:104` | `payload["database"]["schema_version"] == 1` | `SCHEMA_VERSION`（= 2）と比較する | **T-013（org-test）**。同上 |
+
+- **どちらも「リテラルの 1 を定数と比較する形へ直す」だけでよい。** `tests/acceptance/test_stage0_status.py:68` は既に `SCHEMA_VERSION` と
+  比較しているため**修正不要**である。**版数を上げるたびにテストを直さずに済む形が正しい**
+
 ---
 
 ## 20. 実装タスクへの割当と順序
@@ -1655,6 +1859,8 @@ coverage.xml
 | 2 | 15.4 で `media-agent policy check` コマンドを**採らなかった**。CLI から Policy を観測する面が Stage 0 に無いことは、受け入れテスト S-G が公開 API を使う理由になる。CLI からの観測が必要と判断されるなら**別タスク**として起こすこと |
 | 3 | 12.5 の `--force` オプションを新設した。**T-004 の実装範囲に含まれる**（既存 `.media-agent/` の扱いは T-004 完了条件4 の対象） |
 | 4 | 8.4 の組み込み Agent `fail` は**製品に同梱される**。T-006 の実装範囲。異常系を受け入れテストが製品コードなしで検証するために必要 |
+| 5 | **T-012 の3件（D-1 / D-2 / D-3）は T-014 の実装範囲である。** 触る先: `errors.py`（`ProjectStructureError` 追加）／`project/layout.py`（`verify_project_structure`）／`project/scaffold.py`（preflight）／`core/db/connection.py`（例外の包み）／`core/db/migrations.py`（版数 2）／`core/db/repositories.py`（`agent_version` の読み書き）／`core/observability/audit.py`（`AuditRecord` / `AUDIT_SCHEMA_VERSION`）／`core/runtime`（Runner が版数を渡す）／`cli/session.py`（構造の検査）／`cli/diagnostics.py`（検査2・7・10 の hint）／`cli/commands/task.py`（`--limit`） |
+| 6 | **D-2 で `SCHEMA_VERSION` が 1 → 2 になる。** 追加のみの `ALTER TABLE` であり既存行を書き換えないため S-2 には当たらないが、**DB 層に触る変更**である。T-014 の完了条件に「既存の版数1の DB を開いて 2 へ上がり、既存行が失われないこと」を含めることを勧める |
 
 ---
 
@@ -1673,6 +1879,10 @@ coverage.xml
 | **D-T15** | `doctor` が config を読むときに `ConfigError` を送出すると、終了コードが 5 ではなく 4 になり、S-I の期待値と食い違う | `doctor` の中では Config の読み込みを検査結果へ変換する（13.4） |
 | **D-T16** | ログのファイルハンドラをプロジェクト解決前に追加すると、未初期化ディレクトリに `logs/` を作ってしまう | ファイルハンドラは解決後に追加する（11.2） |
 | **D-T17** | `init` のテンプレートを `__file__` 相対で読む（罠 T-4 の再掲）。加えて、テンプレートを `pyproject.toml` のパッケージデータに含め忘れると wheel から消える | `importlib.resources` で読み、`media-agent init` を**インストール済み環境**で1回実行して確認する |
+| **D-T18** | `Path.mkdir(parents=True, exist_ok=True)` は、そのパスが**通常ファイル**のとき `FileExistsError` を送出する。`exist_ok=True` は「ディレクトリとして既にある」ときだけ黙る | 構造の検査（17.4）を先に通す。`mkdir` の例外に頼って判定しない |
+| **D-T19** | `sqlite3.connect()` は**接続の時点では失敗しない。** 中身が SQLite でなくても成功し、最初のクエリ（`PRAGMA user_version` 等）で `sqlite3.DatabaseError: file is not a database` になる | 種別2 の検出は「接続できたか」ではなく「最初のクエリが通ったか」で行う（6.3 / 17.4） |
+| **D-T20** | `agent_version` を `AuditRecorder` の中で「Registry を引いて」埋めると、Recorder が Registry に依存する | 値は `AgentRunner` が渡す（8.3）。Recorder は受け取った値を書くだけ（11.3） |
+| **D-T21** | `--limit` を `click.IntRange` で検査すると、未初期化ディレクトリでも 2 が返り 17.2 の1行目と食い違う | 値域の検査は `--status` と同じ場所（プロジェクトを開いた後）で行う（16.2） |
 
 ---
 
@@ -1686,6 +1896,8 @@ coverage.xml
 | **D-X4** | 同時実行（複数プロセスからの `run`）の正しさ | 前提 D-P3 により Stage 0 では考慮しない。`busy_timeout` と WAL で「即座に壊れない」ところまで |
 | **D-X5** | `audit.jsonl` を回転させないため、長期運用でファイルが単調増加する | Stage 0 の実行回数では問題にならない。運用の長期化に備えたアーカイブ方式は Stage 5 以降で決める（**削除ではなくアーカイブ**であること） |
 | **D-X6** | 方式設計 X-2（GitHub Actions の実行）・X-4（Windows） | 本文書でも解消しない。持ち越し |
+| **D-X7** | 構造破損の網羅（17.4）は**種別1・種別2 の2種だけ**を扱う。権限の異常（読めない・書けない）、シンボリックリンク、ファイルシステム満杯は含めない | 権限は `doctor` の `logs.writable` が既に見ている。**root 実行では権限が効かないため、受け入れテストで安定して作れない**（19.1 の注記）。実行時に起きた場合は `ProjectStructureError` ではなく `DatabaseError` / `OSError` 由来のまま 70 になりうる。**Stage 3 で外部接続・実行環境が増える時点で見直すこと** |
+| **D-X8** | `agent_version` は記録するが、**過去の版で再実行する機構は Stage 0 に無い** | 要件20.5 が求めるのは「追跡可能」であり、再実行ではない。過去版の再現（Agent の版ごとの保存）は Stage 1 以降で Custom Agent を扱うときに判断する |
 
 ---
 
@@ -1704,6 +1916,10 @@ coverage.xml
 | **ローリングウィンドウ（上限判定の窓）** | 判定時刻からさかのぼる固定長の時間窓（`per_day`=24時間、`per_hour`=1時間）（10.5） | 「1日」をカレンダー日（0時区切り）と取ると、タイムゾーンの扱いが必要になり、判定結果が実行時刻で変わる |
 | **代理計数（Stage 0 の上限計数）** | Action の実行回数の代わりに、`allow` と判定した回数を数えること（10.5 / D-X1） | 「実行回数を数えている」と取ると、Stage 3 で Action を実装したときに二重計上する |
 | **スキーマ版数（`SCHEMA_VERSION` / `config.version`）** | DB の構造版数（`PRAGMA user_version`）と、設定ファイルの構造版数。**互いに独立で、パッケージ版数とも独立**（7章） | どれか1つを「バージョン」と総称すると、コードだけ直したいときに設定移行が要るように見える |
+| **構造破損（structural breakage）**（T-012） | `.media-agent/` は存在するが、配下が期待する形をしていない状態（17.4.1）。**種別1: ディレクトリであるべきパスが通常ファイル／種別2: DB が SQLite として開けない**。終了コードは 1 | 「初期化されていない」と取ると終了コード 3 の領分と混ざる。**`.media-agent/` があるかどうかが両者の境界である**。また「壊れているから直す」と取ると、コマンドが利用者のファイルを勝手に動かす実装になる（17.4 の R-2 で禁止） |
+| **退避（たいひ）**（T-012） | 利用者が、壊れた対象を**リネームまたは移動して、その場所を空けること**（17.4.4 の手順2）。**主語は常に利用者であり、Media Agent は退避しない** | 「削除」と取ると復旧手順がデータ喪失になる。**Hint の安定文字列でもある**ため、文言を「削除してください」に変えるとテストが落ちる |
+| **preflight（`init` の事前検査）**（T-012） | `init` が生成物を1つも書く前に構造を検査すること（12.5 / 17.4 の R-5）。失敗時は**何も書かずに**終了コード 1 | 「検査してから警告して続行する」と取ると、壊れた構造の上に半端な生成物が残る |
+| **`agent_version`**（T-012） | 監査記録に永続化される、実行した Agent の `version`（6.4 / 11.3）。要件20.5 の「Agent Version」の実体 | パッケージ版数・スキーマ版数と混同すると、`media-agent --version` を上げれば追跡できると誤解する。**3つは互いに独立である** |
 
 ---
 
@@ -1737,3 +1953,9 @@ coverage.xml
 | `run` の Stage 0 挙動 | 組み込み Agent を1本実行 | 未実装スタブ / 全 Agent 実行 | Runtime を作ったのに CLI から動かせない / 既定で必ず失敗する | 15.1 |
 | `run` と Policy | 呼ばない | 形だけ呼ぶ / `policy check` コマンドを新設 | 意味のない `allow` が上限を消費する / T-007 の変更範囲を超える | 15.4 |
 | テンプレートの置換 | `str.replace` | Jinja2 | 置換1箇所のために依存が増える | 12.2 |
+| **構造破損の終了コード**（D-1） | **1**（`ProjectStructureError` / `DatabaseError`） | 新コード 7 / `doctor` と同じ 5 / 未初期化の 3 / `UsageError` の 2 | 終了コード表は方式設計の持ち物 / 5 は「doctor が落ちた」意味に固定されている / `.media-agent/` は現に存在する / 使い方の誤りではなく環境の異常 | 17.4.5 |
+| **構造破損の復旧**（D-1） | 利用者が**退避**し、`init` が不足分を補う | `init` が自動で退避・再作成する | 12.5 が確定させた「利用者のファイルに触らない」を破る。**黙って動かされたファイルは、利用者から見て失われたのと同じ** | 17.4.5 |
+| **構造破損時の degrade**（D-1） | 止める（1） | `logs/` が使えなければ stderr だけで続行 | `run` が**監査記録を残せないまま**判断を行う。11.3 の「記録できない実行を進めない」に反する | 17.4.5 |
+| **`Agent.version` の永続化**（D-2） | **Stage 0 で永続化する**（`decisions.agent_version` + JSONL） | Stage 1 以降へ送る / `tasks` にも持たせる / JSONL だけ | 利用者データが1件も無い今が最も安い。要件20.5 を「一部しか満たさない」まま Stage 0 を終えない / 同じ事実が2か所 / 正本（DB）から辿れない | 6.4・7.3 |
+| **`agent_version` の入れ方**（D-2） | **Migration 版数 2**（`ALTER TABLE`） | 版数1の DDL を書き換える | 既存の版数1の DB が列を欠いたまま「版数1」を自称し、`doctor` は合格するのに実行時に 70 になる。**D-1 で潰した失敗の形そのもの** | 7.3 |
+| **`--limit` の値域**（D-3） | **1 以上**。範囲外は `UsageError`（2） | `0` を許す / 負値を「無制限」とする / 上限を設ける / `IntRange` で検査する | 行があるのに「ありません」と出る / SQLite の実装詳細が仕様になる / 根拠のある上限が無い / 未初期化より先に 2 が返る | 16.2 |
