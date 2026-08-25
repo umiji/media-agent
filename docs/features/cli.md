@@ -9,6 +9,19 @@
 
 どちらも同じ実装を呼ぶ。
 
+## 出力例の読み方
+
+本書の出力例は実際に実行した出力である。ただし、環境や更新で変わる値は次のように読む。
+
+| 例に出てくる値 | 読み方 |
+| --- | --- |
+| `/path/to/my-project` | 実際のプロジェクトのディレクトリに読み替える |
+| UUID・時刻 | 実行のたびに変わる |
+| **`N`（版数）** | **実装の更新に伴って上がるため、数字を伏せてある** |
+
+**本書は版数の数字を書かない。** 版数が上がるたびに文書を直す構造は、必ず実物との食い違いを生む。
+現在の数字が要る場合は [プロジェクトディレクトリ `.media-agent/`](project-directory.md) を見る。
+
 ## グローバルオプション
 
 コマンド名の**前**に置く（例: `media-agent -C ~/my-project doctor`）。
@@ -80,10 +93,10 @@ Media Agent doctor — /path/to/my-project
 [ok]      structure.dirs            agents / memory / data / logs がそろっています
 [ok]      config.syntax             config.yaml を YAML として読めます
 [ok]      config.schema             設定はスキーマを満たしています
-[ok]      config.version            config 版数 1
+[ok]      config.version            config 版数 N
 [ok]      config.consistency        content.posts_per_day (3) <= actions.post.max_per_day (3)
 [ok]      db.file                   media-agent.db を SQLite として開けます
-[ok]      db.schema                 スキーマ版数 1 / 6 テーブルがそろっています
+[ok]      db.schema                 スキーマ版数 N / 6 テーブルがそろっています
 [ok]      db.foreign_keys           外部キー制約が有効です
 [ok]      logs.writable             .media-agent/logs へ書き込めます
 [ok]      security.gitignore        data/, logs/, .env が除外されています
@@ -112,9 +125,9 @@ Media Agent doctor — /path/to/my-project
 $ media-agent status
 Media Agent status — /path/to/my-project
 project      : demo
-config       : version 1 / platform x / posts_per_day 3
+config       : version N / platform x / posts_per_day 3
 automation   : require_approval=false  post=auto reply=approval repost=approval like=disabled
-database     : .media-agent/data/media-agent.db (schema 1)
+database     : .media-agent/data/media-agent.db (schema N)
 agents       : 2 registered — echo, fail
 tasks        : total 1 — pending 0 / running 0 / completed 1 / failed 0 / cancelled 0
 recent tasks :

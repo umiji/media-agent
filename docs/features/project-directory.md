@@ -101,9 +101,17 @@ logging:
 
 どちらにも**秘密値は出力しない。** 入力に含まれる `api_key` のような値はマスクされる。
 
+監査記録の各行は、その行の形式版数を `schema_version` として持つ（現在 **2**）。
+**DB のスキーマ版数とも `config.yaml` の `version` とも独立している。**
+DB のスキーマ版数と同じく、数字を書いているのはここだけで、他の文書の出力例では `N` と伏せてある。
+
 ## DB
 
-`data/media-agent.db` は SQLite で、Stage 0 のスキーマ版数は 1、テーブルは 6 つ
+`data/media-agent.db` は SQLite で、Stage 0 のスキーマ版数は **2**、テーブルは 6 つ
 （`projects` / `sources` / `posts` / `performances` / `tasks` / `decisions`）。
 Stage 0 で実際に書き込まれるのは `projects`（プロジェクト 1 行）・`tasks`・`decisions` の 3 つである。
 `sources` / `posts` / `performances` は Stage 1 以降のための枠であり、Stage 0 では空のままになる。
+
+**利用者向け文書で DB のスキーマ版数を数字で書いているのは、この 1 か所だけである。**
+版数は実装の更新に伴って上がるため、他の文書の出力例では `N` と伏せてある
+（数字を各所へ書くと、版数が上がるたびに全文書が実物と食い違う）。

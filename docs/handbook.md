@@ -33,6 +33,7 @@ Media Agent の利用者向け文書を 1 つに結合したものです。
   - [ここから先](#ここから先)
 - [CLI リファレンス](#cli-リファレンス)
   - [実行の経路](#実行の経路)
+  - [出力例の読み方](#出力例の読み方)
   - [グローバルオプション](#グローバルオプション)
   - [コマンド一覧](#コマンド一覧)
   - [`media-agent init`](#media-agent-init)
@@ -316,14 +317,18 @@ media-agent status
 
 ```
 project      : my-project
-config       : version 1 / platform x / posts_per_day 3
+config       : version N / platform x / posts_per_day 3
 automation   : require_approval=false  post=auto reply=approval repost=approval like=disabled
-database     : .media-agent/data/media-agent.db (schema 1)
+database     : .media-agent/data/media-agent.db (schema N)
 agents       : 2 registered — echo, fail
 tasks        : total 0 — pending 0 / running 0 / completed 0 / failed 0 / cancelled 0
 recent tasks :
   (タスクはありません)
 ```
+
+`version N` と `(schema N)` の `N` には数字が入る。**版数は実装の更新に伴って上がるため、
+本書では数字を伏せてある。** 現在の数字は
+[プロジェクトディレクトリ `.media-agent/`](features/project-directory.md) にある。
 
 ### 4. Agent を実行する
 
@@ -370,14 +375,19 @@ cat .media-agent/logs/audit.jsonl
 
 1 行 1 レコードの JSON である。**設定で消せない記録である。**
 
-```json
-{"action": null, "agent": "echo", "decision": "echo", "decision_id": "e26c7f97-...", "error": null,
- "input": {"message": "hello"}, "kind": "agent_run",
- "reason": "組み込みの検証用 Agent のため、入力をそのまま返した", "result": {"message": "hello"},
- "schema_version": 1, "task": "c4b9eb04-...", "timestamp": "2026-08-24T23:42:43.238855Z"}
+```
+{"action": null, "agent": "echo", "agent_version": 1, "decision": "echo",
+ "decision_id": "268242e0-...", "error": null, "input": {"note": "hello media agent"},
+ "kind": "agent_run", "reason": "組み込みの検証用 Agent のため、入力をそのまま返した",
+ "result": {"note": "hello media agent"}, "schema_version": N,
+ "task": "1d4e14ad-...", "timestamp": "2026-08-25T04:48:32.175319Z"}
 ```
 
-（実際は 1 行だが、ここでは読みやすさのために折り返している。）
+（実際は 1 行だが、ここでは読みやすさのために折り返している。UUID と時刻は実行のたびに変わる。）
+
+`schema_version` は監査記録の形式版数で、ここでも数字を伏せてある。
+`agent_version` は**実行した Agent 自身の版数**で（`media-agent agent list` の `VERSION` 列と同じ値）、
+記録の形式版数とは別物である。
 
 人が動作を追うための運用ログは別のファイルにある。
 
@@ -421,6 +431,19 @@ media-agent doctor --json | head
 | `python -m media_agent ...` | 同上。コンソールスクリプトへパスが通っていない場合に使える |
 
 どちらも同じ実装を呼ぶ。
+
+### 出力例の読み方
+
+本書の出力例は実際に実行した出力である。ただし、環境や更新で変わる値は次のように読む。
+
+| 例に出てくる値 | 読み方 |
+| --- | --- |
+| `/path/to/my-project` | 実際のプロジェクトのディレクトリに読み替える |
+| UUID・時刻 | 実行のたびに変わる |
+| **`N`（版数）** | **実装の更新に伴って上がるため、数字を伏せてある** |
+
+**本書は版数の数字を書かない。** 版数が上がるたびに文書を直す構造は、必ず実物との食い違いを生む。
+現在の数字が要る場合は [プロジェクトディレクトリ `.media-agent/`](features/project-directory.md) を見る。
 
 ### グローバルオプション
 
@@ -493,10 +516,10 @@ Media Agent doctor — /path/to/my-project
 [ok]      structure.dirs            agents / memory / data / logs がそろっています
 [ok]      config.syntax             config.yaml を YAML として読めます
 [ok]      config.schema             設定はスキーマを満たしています
-[ok]      config.version            config 版数 1
+[ok]      config.version            config 版数 N
 [ok]      config.consistency        content.posts_per_day (3) <= actions.post.max_per_day (3)
 [ok]      db.file                   media-agent.db を SQLite として開けます
-[ok]      db.schema                 スキーマ版数 1 / 6 テーブルがそろっています
+[ok]      db.schema                 スキーマ版数 N / 6 テーブルがそろっています
 [ok]      db.foreign_keys           外部キー制約が有効です
 [ok]      logs.writable             .media-agent/logs へ書き込めます
 [ok]      security.gitignore        data/, logs/, .env が除外されています
@@ -525,9 +548,9 @@ Media Agent doctor — /path/to/my-project
 $ media-agent status
 Media Agent status — /path/to/my-project
 project      : demo
-config       : version 1 / platform x / posts_per_day 3
+config       : version N / platform x / posts_per_day 3
 automation   : require_approval=false  post=auto reply=approval repost=approval like=disabled
-database     : .media-agent/data/media-agent.db (schema 1)
+database     : .media-agent/data/media-agent.db (schema N)
 agents       : 2 registered — echo, fail
 tasks        : total 1 — pending 0 / running 0 / completed 1 / failed 0 / cancelled 0
 recent tasks :
@@ -741,12 +764,20 @@ logging:
 
 どちらにも**秘密値は出力しない。** 入力に含まれる `api_key` のような値はマスクされる。
 
+監査記録の各行は、その行の形式版数を `schema_version` として持つ（現在 **2**）。
+**DB のスキーマ版数とも `config.yaml` の `version` とも独立している。**
+DB のスキーマ版数と同じく、数字を書いているのはここだけで、他の文書の出力例では `N` と伏せてある。
+
 ### DB
 
-`data/media-agent.db` は SQLite で、Stage 0 のスキーマ版数は 1、テーブルは 6 つ
+`data/media-agent.db` は SQLite で、Stage 0 のスキーマ版数は **2**、テーブルは 6 つ
 （`projects` / `sources` / `posts` / `performances` / `tasks` / `decisions`）。
 Stage 0 で実際に書き込まれるのは `projects`（プロジェクト 1 行）・`tasks`・`decisions` の 3 つである。
 `sources` / `posts` / `performances` は Stage 1 以降のための枠であり、Stage 0 では空のままになる。
+
+**利用者向け文書で DB のスキーマ版数を数字で書いているのは、この 1 か所だけである。**
+版数は実装の更新に伴って上がるため、他の文書の出力例では `N` と伏せてある
+（数字を各所へ書くと、版数が上がるたびに全文書が実物と食い違う）。
 
 <sub>出典: [`docs/features/project-directory.md`](features/project-directory.md)</sub>
 
@@ -953,10 +984,10 @@ Media Agent doctor — /home/you/media-agent-check/demo-project
 [ok]      structure.dirs            agents / memory / data / logs がそろっています
 [ok]      config.syntax             config.yaml を YAML として読めます
 [ok]      config.schema             設定はスキーマを満たしています
-[ok]      config.version            config 版数 1
+[ok]      config.version            config 版数 N
 [ok]      config.consistency        content.posts_per_day (3) <= actions.post.max_per_day (3)
 [ok]      db.file                   media-agent.db を SQLite として開けます
-[ok]      db.schema                 スキーマ版数 1 / 6 テーブルがそろっています
+[ok]      db.schema                 スキーマ版数 N / 6 テーブルがそろっています
 [ok]      db.foreign_keys           外部キー制約が有効です
 [ok]      logs.writable             .media-agent/logs へ書き込めます
 [ok]      security.gitignore        data/, logs/, .env が除外されています
@@ -973,6 +1004,8 @@ EXIT=0
 - 最終行が `0 fail` であること
 - **`security.env_not_tracked` が `[skipped]` であること。** 認証情報が無いことを異常として扱っていない
 - `runtime.python` の版数は環境により `3.12` / `3.13` になることがある。それでよい
+- **`config 版数` と `スキーマ版数` の `N` には数字が入る。** 本書は版数の数字を書かない
+  （更新に伴って上がるため）。**見るのは数字ではなく、その行が `[ok]` であることである**
 
 ### 手順 7 — `media-agent status`（状態表示）
 
@@ -986,15 +1019,18 @@ echo "EXIT=$?"
 ```
 Media Agent status — /home/you/media-agent-check/demo-project
 project      : demo-project
-config       : version 1 / platform x / posts_per_day 3
+config       : version N / platform x / posts_per_day 3
 automation   : require_approval=false  post=auto reply=approval repost=approval like=disabled
-database     : .media-agent/data/media-agent.db (schema 1)
+database     : .media-agent/data/media-agent.db (schema N)
 agents       : 2 registered — echo, fail
 tasks        : total 0 — pending 0 / running 0 / completed 0 / failed 0 / cancelled 0
 recent tasks :
   (タスクはありません)
 EXIT=0
 ```
+
+**確認すること**: `project` が手順 4 で作ったディレクトリ名になっていること。終了コードが 0 であること。
+`version N` / `(schema N)` の `N` は手順 6 と同じく版数で、**数字は確認対象ではない**。
 
 **ここまでで Stage 0 の検証条件（`init` → Project 生成 → `doctor` → `status`）を満たしている。**
 以降は、Core が実際に動いていることの追加確認である。

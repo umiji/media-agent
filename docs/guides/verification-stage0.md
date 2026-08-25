@@ -199,10 +199,10 @@ Media Agent doctor — /home/you/media-agent-check/demo-project
 [ok]      structure.dirs            agents / memory / data / logs がそろっています
 [ok]      config.syntax             config.yaml を YAML として読めます
 [ok]      config.schema             設定はスキーマを満たしています
-[ok]      config.version            config 版数 1
+[ok]      config.version            config 版数 N
 [ok]      config.consistency        content.posts_per_day (3) <= actions.post.max_per_day (3)
 [ok]      db.file                   media-agent.db を SQLite として開けます
-[ok]      db.schema                 スキーマ版数 1 / 6 テーブルがそろっています
+[ok]      db.schema                 スキーマ版数 N / 6 テーブルがそろっています
 [ok]      db.foreign_keys           外部キー制約が有効です
 [ok]      logs.writable             .media-agent/logs へ書き込めます
 [ok]      security.gitignore        data/, logs/, .env が除外されています
@@ -219,6 +219,8 @@ EXIT=0
 - 最終行が `0 fail` であること
 - **`security.env_not_tracked` が `[skipped]` であること。** 認証情報が無いことを異常として扱っていない
 - `runtime.python` の版数は環境により `3.12` / `3.13` になることがある。それでよい
+- **`config 版数` と `スキーマ版数` の `N` には数字が入る。** 本書は版数の数字を書かない
+  （更新に伴って上がるため）。**見るのは数字ではなく、その行が `[ok]` であることである**
 
 ## 手順 7 — `media-agent status`（状態表示）
 
@@ -232,15 +234,18 @@ echo "EXIT=$?"
 ```
 Media Agent status — /home/you/media-agent-check/demo-project
 project      : demo-project
-config       : version 1 / platform x / posts_per_day 3
+config       : version N / platform x / posts_per_day 3
 automation   : require_approval=false  post=auto reply=approval repost=approval like=disabled
-database     : .media-agent/data/media-agent.db (schema 1)
+database     : .media-agent/data/media-agent.db (schema N)
 agents       : 2 registered — echo, fail
 tasks        : total 0 — pending 0 / running 0 / completed 0 / failed 0 / cancelled 0
 recent tasks :
   (タスクはありません)
 EXIT=0
 ```
+
+**確認すること**: `project` が手順 4 で作ったディレクトリ名になっていること。終了コードが 0 であること。
+`version N` / `(schema N)` の `N` は手順 6 と同じく版数で、**数字は確認対象ではない**。
 
 **ここまでで Stage 0 の検証条件（`init` → Project 生成 → `doctor` → `status`）を満たしている。**
 以降は、Core が実際に動いていることの追加確認である。

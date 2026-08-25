@@ -39,14 +39,18 @@ media-agent status
 
 ```
 project      : my-project
-config       : version 1 / platform x / posts_per_day 3
+config       : version N / platform x / posts_per_day 3
 automation   : require_approval=false  post=auto reply=approval repost=approval like=disabled
-database     : .media-agent/data/media-agent.db (schema 1)
+database     : .media-agent/data/media-agent.db (schema N)
 agents       : 2 registered — echo, fail
 tasks        : total 0 — pending 0 / running 0 / completed 0 / failed 0 / cancelled 0
 recent tasks :
   (タスクはありません)
 ```
+
+`version N` と `(schema N)` の `N` には数字が入る。**版数は実装の更新に伴って上がるため、
+本書では数字を伏せてある。** 現在の数字は
+[プロジェクトディレクトリ `.media-agent/`](../features/project-directory.md) にある。
 
 ## 4. Agent を実行する
 
@@ -93,14 +97,19 @@ cat .media-agent/logs/audit.jsonl
 
 1 行 1 レコードの JSON である。**設定で消せない記録である。**
 
-```json
-{"action": null, "agent": "echo", "decision": "echo", "decision_id": "e26c7f97-...", "error": null,
- "input": {"message": "hello"}, "kind": "agent_run",
- "reason": "組み込みの検証用 Agent のため、入力をそのまま返した", "result": {"message": "hello"},
- "schema_version": 1, "task": "c4b9eb04-...", "timestamp": "2026-08-24T23:42:43.238855Z"}
+```
+{"action": null, "agent": "echo", "agent_version": 1, "decision": "echo",
+ "decision_id": "268242e0-...", "error": null, "input": {"note": "hello media agent"},
+ "kind": "agent_run", "reason": "組み込みの検証用 Agent のため、入力をそのまま返した",
+ "result": {"note": "hello media agent"}, "schema_version": N,
+ "task": "1d4e14ad-...", "timestamp": "2026-08-25T04:48:32.175319Z"}
 ```
 
-（実際は 1 行だが、ここでは読みやすさのために折り返している。）
+（実際は 1 行だが、ここでは読みやすさのために折り返している。UUID と時刻は実行のたびに変わる。）
+
+`schema_version` は監査記録の形式版数で、ここでも数字を伏せてある。
+`agent_version` は**実行した Agent 自身の版数**で（`media-agent agent list` の `VERSION` 列と同じ値）、
+記録の形式版数とは別物である。
 
 人が動作を追うための運用ログは別のファイルにある。
 
