@@ -21,7 +21,13 @@ from media_agent.core.config.loader import load_config
 from media_agent.core.config.models import Config
 from media_agent.core.db.connection import ensure_project_db
 from media_agent.errors import ConfigError, ScaffoldError
-from media_agent.project.layout import ProjectLayout, layout_for
+from media_agent.project.layout import (
+    QUARANTINE_HINT,
+    ProjectLayout,
+    layout_for,
+    verify_not_a_directory,
+    verify_project_structure,
+)
 
 #: `{{PROJECT_NAME}}` が決まらないときの代替（詳細設計 12.3）。
 FALLBACK_PROJECT_NAME = "my-project"
@@ -92,9 +98,12 @@ def init_project(root: Path, *, force: bool = False) -> ScaffoldResult:
     Raises:
         ScaffoldError: `.media-agent` がディレクトリでない、または
             **自分が生成した** `config.yaml` が検証を通らない（詳細設計 12.3）
+        ProjectStructureError: 構造が壊れている（詳細設計 17.4 の R-5。preflight）
+        DatabaseError: 既存の DB を SQLite として開けない（詳細設計 12.5 / 17.4）
     """
     layout = layout_for(root)
-    _ensure_base_dir(layout)
+    _preflight(layout)
+    layout.base.mkdir(parents=True, exist_ok=True)
 
     entries: list[ScaffoldEntry] = []
     entries.append(
@@ -154,14 +163,43 @@ def _config_for_db(layout: ProjectLayout) -> Config | None:
         return None
 
 
+def _preflight(layout: ProjectLayout) -> None:
+    """**生成物を1つも書く前に**構造を検査する（詳細設計 12.5 / 17.4 の R-5）。
+
+    検査対象は `.media-agent/` 自体・`agents/` `memory/` `data/` `logs/` の4ディレクトリ・
+    `data/media-agent.db`（ディレクトリでないこと）。いずれかが破れていれば、
+    **ファイルを1つも作らない・変更しない**まま終了コード 1 で終わる。
+
+    ここで止めないと、`config.yaml` だけが復活して**中途半端な状態**が残る
+    （受け入れテスト S-D6 の判定対象）。
+
+    **DB が SQLite として開けるかは検査しない**（12.5）。中身の検査を `init` に持ち込まない
+    ためであり、そちらは `_ensure_database` が `DatabaseError` で報告する。
+    """
+    _ensure_base_dir(layout)
+    verify_project_structure(
+        layout,
+        paths=(
+            layout.agents_dir,
+            layout.memory_dir,
+            layout.data_dir,
+            layout.logs_dir,
+        ),
+    )
+    verify_not_a_directory(layout.db_path)
+
+
 def _ensure_base_dir(layout: ProjectLayout) -> None:
-    """`.media-agent/` を用意する。ファイルとして存在する場合は `ScaffoldError`。"""
+    """`.media-agent/` がファイルとして存在する場合は `ScaffoldError`（詳細設計 12.5）。
+
+    **構造破損ではなく「未初期化」の側の判断である**（17.4.1）。既存どおり
+    `ScaffoldError` のままとする（12.5 で確定済み。蒸し返さない）。
+    """
     if layout.base.exists() and not layout.base.is_dir():
         raise ScaffoldError(
             f"{layout.base} はディレクトリではありません",
-            hint="このパスにあるファイルを退避してから、もう一度実行してください",
+            hint=QUARANTINE_HINT,
         )
-    layout.base.mkdir(parents=True, exist_ok=True)
 
 
 def _write_file(

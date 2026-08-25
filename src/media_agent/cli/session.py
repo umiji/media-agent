@@ -30,9 +30,13 @@ from media_agent.core.observability.audit import AuditRecorder
 from media_agent.core.observability.log import get_logger, setup_logging
 from media_agent.core.runtime import AgentRegistry, AgentRunner
 from media_agent.core.task import TaskService
-from media_agent.project.layout import ProjectLayout
+from media_agent.project.layout import (
+    ProjectLayout,
+    verify_not_a_directory,
+    verify_project_structure,
+)
 
-__all__ = ["ProjectSession", "open_session", "setup_cli_logging"]
+__all__ = ["ProjectSession", "open_session", "setup_cli_logging", "verify_structure"]
 
 
 @dataclass(frozen=True)
@@ -84,15 +88,37 @@ def setup_cli_logging(
     )
 
 
+def verify_structure(layout: ProjectLayout) -> None:
+    """このコマンド群が必要とする構造だけを検査する（詳細設計 17.4 の R-4 / 15.1 の手順2）。
+
+    検査対象は **`data/`・`logs/`・`db_path` の3つ**である。`agents/` `memory/` は
+    Stage 0 の実行経路が読まないため、壊れていても止めない（17.2 の最終行）。
+
+    **`run` だけの検査にしない**（15.1）。`status` / `run` / `task list` が同じ経路を通ることで、
+    3コマンドの終了コードが 17.2 の1行に揃う。
+    """
+    verify_project_structure(layout, paths=(layout.data_dir, layout.logs_dir))
+    verify_not_a_directory(layout.db_path)
+
+
 @contextmanager
 def open_session(cli_ctx: CliContext) -> Iterator[ProjectSession]:
     """プロジェクトを開き、終了時に必ず接続を閉じる。
 
+    **異常の優先順位は検査の順序で固定する**（詳細設計 17.4 の R-7）:
+    未初期化（3） → 構造破損（1） → 設定エラー（4） → オプションの値域（2）。
+    値域の検査は呼び出し側（`task list`）が `with` の内側で行う。
+
     Raises:
         ProjectNotInitializedError: 未初期化（終了コード 3）
+        ProjectStructureError: 構造破損の種別1（終了コード 1）
+        DatabaseError: 構造破損の種別2（終了コード 1）
         ConfigError: `config.yaml` が読めない（終了コード 4）
     """
     layout = cli_ctx.layout()
+    # **設定の読み込みとログの構成より前に検査する。** `logs/` が通常ファイルの状態で
+    # ファイルハンドラを開くと、素の `OSError` が 70 へ落ちる（17.4 の R-1）。
+    verify_structure(layout)
     config = load_config(layout.config_path)
     setup_cli_logging(cli_ctx, log_path=layout.log_path, level=config.logging.level)
     logger = get_logger("cli")

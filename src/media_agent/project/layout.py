@@ -6,10 +6,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from media_agent.errors import ProjectNotInitializedError
+from media_agent.errors import ProjectNotInitializedError, ProjectStructureError
+
+#: 構造破損（詳細設計 17.4）の復旧手順（Hint。17.4.3 が規範）。
+#: 安定文字列は `退避` と `media-agent init` の2つ（17.3）。
+QUARANTINE_HINT = (
+    "このパスにあるファイルを退避してから media-agent init を実行してください"
+)
 
 #: `.media-agent/` ディレクトリの名前。**この文字列はこのモジュールにだけ置く。**
 BASE_DIR_NAME = ".media-agent"
@@ -66,6 +73,45 @@ def layout_for(root: Path) -> ProjectLayout:
         log_path=logs_dir / "media-agent.log",
         audit_path=logs_dir / "audit.jsonl",
         gitignore_path=base / ".gitignore",
+    )
+
+
+def verify_project_structure(layout: ProjectLayout, *, paths: Sequence[Path]) -> None:
+    """指定されたパスが「ディレクトリであるべきなのに通常ファイル」でないことを確かめる。
+
+    破れていれば `ProjectStructureError`（終了コード 1）。**修復も削除もしない**
+    （詳細設計 17.4 の R-2）。呼び出し側が `paths` を渡すのは、**コマンドごとに必要な
+    構造だけを検査する**ためである（R-4。`agents/` `memory/` を読まない `status` は、
+    それらが壊れていても止まらない）。
+
+    **存在しないパスは異常としない。** 「無い」は未初期化か、`init` が補える不足で
+    あり、構造破損（`.media-agent/` は在るが形が違う）とは別の状況である（17.4.1）。
+    """
+    for path in paths:
+        if path.exists() and not path.is_dir():
+            raise _not_a_directory(path)
+
+
+def verify_not_a_directory(path: Path) -> None:
+    """ファイルであるべきパスがディレクトリでないことを確かめる（種別1 の逆向き）。
+
+    `data/media-agent.db` がディレクトリの場合に使う（詳細設計 17.4.1 の種別1・12.5 の
+    preflight の検査対象）。`sqlite3` へ渡すと `OSError` になる形を、先に
+    `ProjectStructureError`（終了コード 1）で止める。
+    """
+    if path.is_dir():
+        raise ProjectStructureError(
+            f"{path} は通常のファイルではありません",
+            details=[f"{path} がディレクトリになっています"],
+            hint=QUARANTINE_HINT,
+        )
+
+
+def _not_a_directory(path: Path) -> ProjectStructureError:
+    """構造破損（種別1）の例外（安定文字列は詳細設計 17.3 / 17.4.3）。"""
+    return ProjectStructureError(
+        f"{path} はディレクトリではありません",
+        hint=QUARANTINE_HINT,
     )
 
 

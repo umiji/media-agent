@@ -48,6 +48,20 @@ class ScaffoldError(MediaAgentError):
     exit_code: ClassVar[int] = 1
 
 
+class ProjectStructureError(MediaAgentError):
+    """`.media-agent/` は在るが、配下が期待する形をしていない（終了コード 1）。
+
+    詳細設計 17.4「構造破損」の**種別1**（ディレクトリであるべきパスが通常ファイル、
+    またはその逆）を表す。**種別2（DB が SQLite として開けない）は `DatabaseError`** で
+    あり、どちらも終了コード 1 に揃えてある（17.4.3）。
+
+    **壊れた対象を自動で退避・削除・上書きしない**（17.4 の R-2）。復旧の主語は利用者で
+    あり、Hint は「退避してから `media-agent init`」という手順を示す（R-3）。
+    """
+
+    exit_code: ClassVar[int] = 1
+
+
 class ConfigError(MediaAgentError):
     """設定に関するエラーの基底（終了コード 4）。"""
 
