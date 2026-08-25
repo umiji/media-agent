@@ -330,9 +330,16 @@ def summarize(tasks: list[dict], days: int, open_questions: int | None) -> dict:
         or any(b and state_of.get(d) not in TERMINAL for d, b in t["deps"])
     ]
 
+    # 依存先待ち・保留のタスクを滞留日数から外す。組織が手を打っても動かないものを
+    # 数えると、直列な依存の連鎖がそのまま「工程の詰まり」として出てしまう。
+    # check() が停滞判定で同じ除外をしているのに、ここだけ抜けていた（2026-08-24 修正）。
+    blocked_ids = {t["id"] for t in blocked}
     ages = {}
     for state in [x for x in STATES if x not in TERMINAL] + [x for x in by_state if x not in STATES]:
-        vals = [t["age"] for t in by_state.get(state, []) if t["age"] is not None]
+        vals = [
+            t["age"] for t in by_state.get(state, [])
+            if t["age"] is not None and t["id"] not in blocked_ids
+        ]
         if vals:
             ages[state] = statistics.median(vals)
 
@@ -397,7 +404,7 @@ def print_summary(s: dict) -> int:
     if s["工程別"]:
         print("  工程別: " + " / ".join(f"{k} {v}" for k, v in s["工程別"].items()))
     if s["滞留日数の中央値"]:
-        print("  滞留日数の中央値: " + " / ".join(f"{k} {v:.0f}日" for k, v in s["滞留日数の中央値"].items()))
+        print("  滞留日数の中央値（依存待ち・保留を除く）: " + " / ".join(f"{k} {v:.0f}日" for k, v in s["滞留日数の中央値"].items()))
         # 「保留」と「PO確認待ち」は意図して止めているので、詰まりの候補から外す。
         # 組織が手を打っても動かないものを工程の詰まりと呼ぶと、判断を誤らせる。
         active = {k: v for k, v in s["滞留日数の中央値"].items() if k in IN_PROGRESS or k == "未着手"}
